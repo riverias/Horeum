@@ -1,13 +1,13 @@
 import { useQuery } from "@tanstack/react-query"
 import { motion } from "framer-motion"
-import { Clock3, Flame, Heart, Play, Radio, Sparkles } from "lucide-react"
+import { Clock3, Radio, Sparkles, TrendingUp } from "lucide-react"
 import { api } from "@/lib/api"
 import { TrackList } from "@/components/TrackList"
 import { SkeletonGrid } from "@/components/SkeletonList"
+import { formatCount } from "@/lib/utils"
 import { usePlayerStore } from "@/store/player"
 import { useProfileStore } from "@/store/profile"
 import { useUiStore } from "@/store/ui"
-import { formatDuration } from "@/lib/utils"
 
 function greeting() {
   const h = new Date().getHours()
@@ -18,141 +18,134 @@ function greeting() {
 }
 
 export function HomeView() {
-  const profile = useProfileStore((s) => s.profile)
   const navigate = useUiStore((s) => s.navigate)
+  const waveLoading = useUiStore((s) => s.waveLoading)
   const startWave = usePlayerStore((s) => s.startWave)
-  const playQueue = usePlayerStore((s) => s.playQueue)
+  const profile = useProfileStore((s) => s.profile)
 
-  const { data: charts = [], isLoading: chartsLoading } = useQuery({
-    queryKey: ["charts", "top", "all-music"],
-    queryFn: () => api.charts("top", "all-music", 24),
+  const { data: charts = [], isFetching: chartsLoading } = useQuery({
+    queryKey: ["charts", "trending", "all-music", 12],
+    queryFn: () => api.charts("trending", "all-music", 12),
+    staleTime: 10 * 60 * 1000,
   })
-  const { data: history = [] } = useQuery({ queryKey: ["history"], queryFn: () => api.history(12) })
-  const { data: moods = [] } = useQuery({ queryKey: ["moods"], queryFn: api.moods })
+  const { data: history = [] } = useQuery({ queryKey: ["history", 10], queryFn: () => api.history(10) })
+  const { data: moods = [] } = useQuery({ queryKey: ["moods"], queryFn: api.moods, staleTime: Infinity })
+  const { data: stats } = useQuery({ queryKey: ["stats"], queryFn: api.stats })
 
   return (
-    <div className="space-y-9">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="text-sm text-white/40">{greeting()},</p>
-          <h1 className="font-display text-4xl font-extrabold tracking-tight">
-            <span className="text-gradient">{profile?.display_name ?? "Слушатель"}</span>
+    <div className="space-y-10">
+      {/* герой */}
+      <motion.section
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="card relative overflow-hidden p-8"
+      >
+        <div
+          className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full blur-3xl"
+          style={{ background: "rgba(var(--accent-rgb), 0.28)" }}
+        />
+        <div className="relative z-10">
+          <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/35">Horeum</p>
+          <h1 className="mt-2 font-display text-5xl font-extrabold tracking-tight">
+            {greeting()},{" "}
+            <span className="text-gradient">{profile?.display_name ?? "меломан"}</span>
           </h1>
-          <p className="mt-2 text-sm text-white/40">
-            Уровень {profile?.level ?? 1} • {profile?.title ?? "Новичок"} • серия {profile?.streak ?? 0} дн.
+          <p className="mt-3 max-w-xl text-sm leading-relaxed text-white/45">
+            Запусти «Волну» — бесконечный поток, который собирается из твоих лайков, истории и
+            похожих треков SoundCloud, или выбери настроение.
           </p>
-        </div>
-        <div className="flex gap-2">
-          <button className="btn-accent" onClick={() => void startWave()}>
-            <Radio size={16} /> Моя волна
-          </button>
-          <button className="btn glass" onClick={() => navigate("moods")}>
-            <Sparkles size={16} /> По настроению
-          </button>
-        </div>
-      </header>
 
-      {/* быстрые карточки */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {[
-          { label: "Волна", desc: "Бесконечный поток", icon: Radio, action: () => void startWave() },
-          { label: "Любимое", desc: "Твои лайки", icon: Heart, action: () => navigate("library") },
-          { label: "Чарты", desc: "Топ SoundCloud", icon: Flame, action: () => navigate("charts") },
-          { label: "История", desc: "Что слушал", icon: Clock3, action: () => navigate("history") },
-        ].map(({ label, desc, icon: Icon, action }) => (
-          <motion.button
-            key={label}
-            whileHover={{ y: -3 }}
-            onClick={action}
-            className="card flex items-center gap-3 p-4 text-left"
-          >
-            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-[rgb(var(--accent-rgb)/0.18)] text-[rgb(var(--accent-rgb))]">
-              <Icon size={19} />
-            </span>
-            <span className="min-w-0">
-              <span className="block truncate text-sm font-semibold text-white">{label}</span>
-              <span className="block truncate text-[11px] text-white/35">{desc}</span>
-            </span>
-          </motion.button>
-        ))}
-      </div>
+          <div className="mt-6 flex flex-wrap gap-2">
+            <button className="btn-accent" disabled={waveLoading} onClick={() => void startWave()}>
+              <Radio size={17} /> {waveLoading ? "Собираю волну…" : "Запустить волну"}
+            </button>
+            <button className="btn glass" onClick={() => navigate("moods")}>
+              <Sparkles size={16} /> По настроению
+            </button>
+            <button className="btn glass" onClick={() => navigate("charts")}>
+              <TrendingUp size={16} /> Чарты
+            </button>
+          </div>
+
+          {stats && (
+            <div className="mt-7 flex flex-wrap gap-6 text-xs text-white/40">
+              <span>
+                <b className="text-white">{stats.tracks_played}</b> прослушиваний
+              </span>
+              <span>
+                <b className="text-white">{stats.minutes_listened}</b> минут
+              </span>
+              <span>
+                <b className="text-white">{stats.unique_artists}</b> артистов
+              </span>
+            </div>
+          )}
+        </div>
+      </motion.section>
 
       {/* настроения */}
-      <section className="space-y-3">
-        <h2 className="section-title">Под настроение</h2>
-        <div className="flex flex-wrap gap-2.5">
-          {moods.slice(0, 12).map((m) => (
-            <button
+      <section className="space-y-4">
+        <h2 className="section-title text-xl">Настроение сейчас</h2>
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+          {moods.slice(0, 6).map((m, i) => (
+            <motion.button
               key={m.id}
-              onClick={async () => {
-                const tracks = await api.moodQueue(m.id, 60)
-                void playQueue(tracks, 0, "mood")
-              }}
-              className="group relative overflow-hidden rounded-2xl px-5 py-3.5 text-sm font-bold text-white shadow-panel transition-transform hover:scale-[1.04]"
-              style={{ backgroundImage: m.gradient }}
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.04 }}
+              whileHover={{ y: -4 }}
+              onClick={() => navigate("moods")}
+              className="relative h-28 overflow-hidden rounded-2xl p-4 text-left shadow-panel"
+              style={{ background: m.gradient }}
             >
-              <span className="relative z-10 flex items-center gap-2">
-                <span className="text-lg">{m.emoji}</span> {m.name}
-              </span>
-              <span className="absolute inset-0 bg-black/25 transition-opacity group-hover:opacity-0" />
-            </button>
+              <span className="text-2xl">{m.emoji}</span>
+              <p className="mt-1 text-sm font-bold drop-shadow">{m.name}</p>
+            </motion.button>
           ))}
         </div>
       </section>
 
-      {/* чарты сеткой */}
-      <section className="space-y-3">
+      {/* чарты */}
+      <section className="space-y-4">
         <div className="flex items-end justify-between">
-          <h2 className="section-title">Сейчас слушают</h2>
-          <button className="btn glass text-xs" onClick={() => navigate("charts")}>
-            Все чарты
+          <h2 className="section-title text-xl">Набирают популярность</h2>
+          <button className="text-xs text-white/40 hover:text-white" onClick={() => navigate("charts")}>
+            Все чарты →
           </button>
         </div>
-
         {chartsLoading ? (
-          <SkeletonGrid count={10} />
+          <SkeletonGrid count={6} />
         ) : (
-          <div className="stagger grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5">
-            {charts.slice(0, 10).map((track, i) => (
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
+            {charts.slice(0, 6).map((t, i) => (
               <motion.button
-                key={track.id}
+                key={t.id}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.04 }}
                 whileHover={{ y: -5 }}
-                onClick={() => void playQueue(charts, i, "charts")}
-                className="group text-left"
+                onClick={() => usePlayerStore.getState().playQueue(charts, i, "charts")}
+                className="card overflow-hidden p-3 text-left"
               >
-                <div className="relative aspect-square overflow-hidden rounded-2xl bg-ink-800 shadow-panel">
-                  {track.artwork && (
-                    <img
-                      src={track.artwork}
-                      alt=""
-                      loading="lazy"
-                      className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
-                    />
-                  )}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
-                  <span className="absolute bottom-3 right-3 grid h-11 w-11 translate-y-3 place-items-center rounded-full bg-white text-black opacity-0 shadow-glow transition-all group-hover:translate-y-0 group-hover:opacity-100">
-                    <Play size={18} fill="currentColor" className="ml-0.5" />
-                  </span>
-                  <span className="absolute left-3 top-3 rounded-lg bg-black/60 px-2 py-0.5 text-[10px] font-bold backdrop-blur-md">
-                    #{i + 1}
-                  </span>
+                <div className="aspect-square overflow-hidden rounded-xl bg-ink-800">
+                  {t.artwork && <img src={t.artwork} alt="" className="h-full w-full object-cover" />}
                 </div>
-                <p className="mt-2.5 truncate text-[13px] font-semibold text-white">{track.title}</p>
-                <p className="truncate text-[11px] text-white/35">
-                  {track.artist} • {formatDuration(track.duration)}
-                </p>
+                <p className="mt-2.5 truncate text-[13px] font-semibold">{t.title}</p>
+                <p className="truncate text-[11px] text-white/35">{t.artist}</p>
+                <p className="mt-1 text-[10px] text-white/25">{formatCount(t.playback_count)} просл.</p>
               </motion.button>
             ))}
           </div>
         )}
       </section>
 
+      {/* история */}
       {history.length > 0 && (
         <TrackList
           tracks={history}
-          title="Продолжить слушать"
-          subtitle="Недавно играло"
+          title="Вы слушали"
           source="library"
+          icon={<Clock3 size={18} />}
         />
       )}
     </div>

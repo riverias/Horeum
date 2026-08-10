@@ -3,21 +3,27 @@ import { useQuery } from "@tanstack/react-query"
 import { motion } from "framer-motion"
 import { api } from "@/lib/api"
 import { TrackList } from "@/components/TrackList"
+import { cn } from "@/lib/utils"
+import { usePlayerStore } from "@/store/player"
 import { useUiStore } from "@/store/ui"
-import type { Mood, Track } from "@/lib/types"
+import type { Track } from "@/lib/types"
 
 export function MoodsView() {
-  const { data: moods = [] } = useQuery({ queryKey: ["moods"], queryFn: api.moods })
-  const [active, setActive] = useState<Mood | null>(null)
+  const toast = useUiStore((s) => s.toast)
+  const playQueue = usePlayerStore((s) => s.playQueue)
+  const [active, setActive] = useState<string | null>(null)
   const [tracks, setTracks] = useState<Track[]>([])
   const [loading, setLoading] = useState(false)
-  const toast = useUiStore((s) => s.toast)
 
-  const pick = async (mood: Mood) => {
-    setActive(mood)
+  const { data: moods = [] } = useQuery({ queryKey: ["moods"], queryFn: api.moods, staleTime: Infinity })
+
+  const pick = async (id: string, autoplay: boolean) => {
+    setActive(id)
     setLoading(true)
     try {
-      setTracks(await api.moodQueue(mood.id, 60))
+      const list = await api.moodQueue(id, 60)
+      setTracks(list)
+      if (autoplay && list.length) playQueue(list, 0, "mood")
     } catch (e) {
       toast((e as Error).message, "error")
     } finally {
@@ -28,44 +34,40 @@ export function MoodsView() {
   return (
     <div className="space-y-8">
       <header>
-        <h1 className="font-display text-4xl font-extrabold">Настроения</h1>
-        <p className="mt-2 text-sm text-white/40">
-          Выбери вайб — соберём подборку из SoundCloud под него.
+        <h1 className="font-display text-4xl font-extrabold tracking-tight">По настроению</h1>
+        <p className="mt-2 text-sm text-white/45">
+          Каждое настроение — это набор жанров и поисковых тегов SoundCloud, смешанных в одну очередь.
         </p>
       </header>
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">
-        {moods.map((m) => (
+        {moods.map((m, i) => (
           <motion.button
             key={m.id}
-            whileHover={{ y: -5, scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={() => void pick(m)}
-            className={`relative h-36 overflow-hidden rounded-3xl p-5 text-left shadow-panel transition-shadow ${
-              active?.id === m.id ? "ring-2 ring-white/70" : ""
-            }`}
-            style={{ backgroundImage: m.gradient }}
+            initial={{ opacity: 0, scale: 0.94 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: i * 0.03 }}
+            whileHover={{ y: -6 }}
+            whileTap={{ scale: 0.97 }}
+            onClick={() => void pick(m.id, true)}
+            className={cn(
+              "relative h-40 overflow-hidden rounded-3xl p-5 text-left shadow-panel",
+              active === m.id && "ring-2 ring-white/60",
+            )}
+            style={{ background: m.gradient }}
           >
-            <div className="absolute inset-0 bg-black/25" />
-            <div className="relative z-10 flex h-full flex-col justify-between">
-              <span className="text-4xl drop-shadow-lg">{m.emoji}</span>
-              <div>
-                <p className="font-display text-xl font-extrabold text-white drop-shadow">{m.name}</p>
-                <p className="mt-0.5 truncate text-[11px] text-white/70">
-                  {m.queries.slice(0, 3).join(" • ")}
-                </p>
-              </div>
-            </div>
+            <span className="text-4xl drop-shadow">{m.emoji}</span>
+            <p className="mt-2 font-display text-xl font-extrabold drop-shadow">{m.name}</p>
+            <p className="mt-1 line-clamp-2 text-[11px] text-white/75">{m.description}</p>
           </motion.button>
         ))}
       </div>
 
-      {active && (
+      {(loading || tracks.length > 0) && (
         <TrackList
           tracks={tracks}
           loading={loading}
-          title={`${active.emoji} ${active.name}`}
-          subtitle={`${tracks.length} треков под настроение`}
+          title={moods.find((m) => m.id === active)?.name ?? "Подборка"}
           source="mood"
         />
       )}
