@@ -1,0 +1,509 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --accent: #8b5cf6;
+    --accent-rgb: 139 92 246;
+    --bg-0: #06060a;
+  }
+
+  * {
+    @apply border-white/5;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+    overflow: hidden;
+  }
+
+  body {
+    @apply bg-ink-950 text-white/90 font-sans antialiased select-none;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-white/10;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-white/25;
+    background-clip: content-box;
+  }
+
+  input,
+  textarea {
+    @apply select-text;
+  }
+}
+
+@layer components {
+  .glass {
+    @apply border border-white/10 bg-white/[0.045] backdrop-blur-2xl;
+  }
+
+  .glass-strong {
+    @apply border border-white/10 bg-ink-900/80 backdrop-blur-3xl;
+  }
+
+  .card {
+    @apply glass rounded-2xl transition-all duration-300 hover:border-white/20 hover:bg-white/[0.07];
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-3.5 py-2 text-sm font-medium
+           text-white/75 transition-all duration-200 hover:bg-white/10 hover:text-white
+           active:scale-[0.97] disabled:pointer-events-none disabled:opacity-40;
+  }
+
+  .btn-accent {
+    @apply btn text-white shadow-glow;
+    background: linear-gradient(135deg, rgb(var(--accent-rgb)), rgb(var(--accent-rgb) / 0.65));
+  }
+
+  .btn-icon {
+    @apply grid h-9 w-9 place-items-center rounded-xl text-white/65 transition-all
+           duration-200 hover:bg-white/10 hover:text-white active:scale-90;
+  }
+
+  .chip {
+    @apply rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium
+           text-white/70 transition-colors hover:border-white/25 hover:text-white;
+  }
+
+  .chip-active {
+    @apply border-transparent text-white;
+    background: linear-gradient(135deg, rgb(var(--accent-rgb)), rgb(var(--accent-rgb) / 0.55));
+  }
+
+  .input {
+    @apply w-full rounded-xl border border-white/10 bg-white/5 px-3.5 py-2.5 text-sm text-white
+           placeholder:text-white/30 outline-none transition-all
+           focus:border-[rgb(var(--accent-rgb))] focus:bg-white/[0.08]
+           focus:ring-4 focus:ring-[rgb(var(--accent-rgb)/0.15)];
+  }
+
+  .section-title {
+    @apply font-display text-2xl font-extrabold tracking-tight text-white;
+  }
+
+  .skeleton {
+    @apply relative overflow-hidden rounded-lg bg-white/[0.06];
+  }
+  .skeleton::after {
+    content: "";
+    @apply absolute inset-0 -translate-x-full animate-shimmer;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08), transparent);
+  }
+
+  .scroll-area {
+    @apply h-full overflow-y-auto overflow-x-hidden;
+    scrollbar-gutter: stable;
+  }
+
+  .text-gradient {
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(120deg, #fff, rgb(var(--accent-rgb)), #fff);
+    background-size: 220% auto;
+    animation: gradientShift 8s ease infinite;
+  }
+
+  .drag-region {
+    -webkit-app-region: drag;
+  }
+  .no-drag {
+    -webkit-app-region: no-drag;
+  }
+}
+
+/* ============================================================
+   АНИМИРОВАННЫЕ ФОНЫ ПРОФИЛЯ (unlockable backgrounds)
+   ============================================================ */
+.bg-scene {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.bg-default {
+  background:
+    radial-gradient(1200px 700px at 12% -10%, rgb(var(--accent-rgb) / 0.18), transparent 60%),
+    radial-gradient(900px 600px at 92% 8%, rgba(56, 189, 248, 0.12), transparent 60%),
+    #06060a;
+}
+
+.bg-aurora {
+  background: #05060d;
+}
+.bg-aurora::before,
+.bg-aurora::after {
+  content: "";
+  position: absolute;
+  inset: -30%;
+  background:
+    radial-gradient(45% 38% at 30% 30%, rgba(124, 58, 237, 0.5), transparent 70%),
+    radial-gradient(40% 34% at 70% 45%, rgba(16, 185, 129, 0.42), transparent 70%),
+    radial-gradient(38% 32% at 50% 75%, rgba(59, 130, 246, 0.42), transparent 70%);
+  filter: blur(60px);
+  animation: auroraDrift 22s ease-in-out infinite alternate;
+}
+.bg-aurora::after {
+  animation-duration: 32s;
+  animation-direction: alternate-reverse;
+  opacity: 0.7;
+}
+@keyframes auroraDrift {
+  0% {
+    transform: translate3d(-6%, -4%, 0) rotate(0deg) scale(1);
+  }
+  100% {
+    transform: translate3d(6%, 5%, 0) rotate(12deg) scale(1.18);
+  }
+}
+
+.bg-mesh {
+  background:
+    radial-gradient(at 18% 22%, #7c3aed 0px, transparent 52%),
+    radial-gradient(at 82% 18%, #db2777 0px, transparent 52%),
+    radial-gradient(at 25% 82%, #0ea5e9 0px, transparent 52%),
+    radial-gradient(at 78% 78%, #f59e0b 0px, transparent 52%),
+    #07070f;
+  background-size: 220% 220%;
+  animation: gradientShift 24s ease infinite;
+  filter: saturate(1.1);
+  opacity: 0.85;
+}
+@keyframes gradientShift {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+.bg-vinyl {
+  background: #08070b;
+}
+.bg-vinyl::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 160vmax;
+  height: 160vmax;
+  transform: translate(-50%, -50%);
+  background: repeating-radial-gradient(
+    circle at center,
+    rgba(255, 255, 255, 0.045) 0 1px,
+    transparent 1px 7px
+  );
+  animation: spinSlow 60s linear infinite;
+}
+.bg-vinyl::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(60% 60% at 50% 50%, rgb(var(--accent-rgb) / 0.22), transparent 70%);
+}
+@keyframes spinSlow {
+  to {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
+
+.bg-synthwave {
+  background: linear-gradient(180deg, #150633 0%, #2a0a4a 45%, #ff2e88 100%);
+}
+.bg-synthwave::before {
+  content: "";
+  position: absolute;
+  left: -50%;
+  right: -50%;
+  bottom: -10%;
+  height: 65%;
+  background-image:
+    linear-gradient(rgba(255, 46, 136, 0.65) 2px, transparent 2px),
+    linear-gradient(90deg, rgba(255, 46, 136, 0.5) 2px, transparent 2px);
+  background-size: 100px 60px;
+  transform: perspective(320px) rotateX(68deg);
+  animation: gridRun 3.2s linear infinite;
+}
+.bg-synthwave::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 14%;
+  width: 340px;
+  height: 340px;
+  margin-left: -170px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #ffd166, #ff2e88);
+  filter: blur(2px) saturate(1.2);
+  opacity: 0.85;
+}
+@keyframes gridRun {
+  to {
+    background-position: 0 60px;
+  }
+}
+
+.bg-starfield {
+  background: radial-gradient(ellipse at bottom, #10163a 0%, #04040a 100%);
+}
+.bg-starfield::before,
+.bg-starfield::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    radial-gradient(1.6px 1.6px at 20px 30px, #fff, transparent),
+    radial-gradient(1.4px 1.4px at 140px 90px, #cfe3ff, transparent),
+    radial-gradient(1.8px 1.8px at 260px 160px, #fff, transparent),
+    radial-gradient(1.2px 1.2px at 340px 60px, #a5b4fc, transparent),
+    radial-gradient(1.5px 1.5px at 80px 220px, #fff, transparent);
+  background-size: 420px 300px;
+  animation: starScroll 90s linear infinite;
+  opacity: 0.8;
+}
+.bg-starfield::after {
+  background-size: 260px 190px;
+  animation-duration: 140s;
+  opacity: 0.45;
+}
+@keyframes starScroll {
+  to {
+    background-position: -1200px 900px;
+  }
+}
+
+.bg-liquid {
+  background: #060810;
+}
+.bg-liquid::before,
+.bg-liquid::after {
+  content: "";
+  position: absolute;
+  width: 70vmax;
+  height: 70vmax;
+  border-radius: 42% 58% 63% 37% / 41% 44% 56% 59%;
+  background: linear-gradient(120deg, rgb(var(--accent-rgb) / 0.55), rgba(14, 165, 233, 0.45));
+  filter: blur(48px);
+  animation: blobMorph 26s ease-in-out infinite;
+  top: -18%;
+  left: -14%;
+}
+.bg-liquid::after {
+  background: linear-gradient(120deg, rgba(236, 72, 153, 0.45), rgba(250, 204, 21, 0.35));
+  animation-duration: 34s;
+  animation-direction: reverse;
+  top: auto;
+  bottom: -22%;
+  left: auto;
+  right: -16%;
+}
+@keyframes blobMorph {
+  0%,
+  100% {
+    border-radius: 42% 58% 63% 37% / 41% 44% 56% 59%;
+    transform: rotate(0deg) scale(1);
+  }
+  50% {
+    border-radius: 63% 37% 41% 59% / 56% 63% 37% 44%;
+    transform: rotate(180deg) scale(1.14);
+  }
+}
+
+.bg-nebula {
+  background: #04030a;
+}
+.bg-nebula::before {
+  content: "";
+  position: absolute;
+  inset: -25%;
+  background:
+    radial-gradient(35% 30% at 25% 35%, rgba(168, 85, 247, 0.55), transparent 70%),
+    radial-gradient(30% 26% at 68% 28%, rgba(244, 63, 94, 0.45), transparent 70%),
+    radial-gradient(40% 34% at 52% 72%, rgba(56, 189, 248, 0.42), transparent 70%),
+    radial-gradient(24% 22% at 82% 66%, rgba(250, 204, 21, 0.32), transparent 70%);
+  filter: blur(70px) saturate(1.25);
+  animation: auroraDrift 40s ease-in-out infinite alternate;
+}
+.bg-nebula::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(1.4px 1.4px at 60px 80px, #fff, transparent),
+    radial-gradient(1.2px 1.2px at 220px 40px, #fff, transparent);
+  background-size: 300px 240px;
+  opacity: 0.5;
+  animation: starScroll 120s linear infinite;
+}
+
+/* ============================================================
+   РАМКИ АВАТАРА (unlockable frames)
+   ============================================================ */
+.frame {
+  position: relative;
+  border-radius: 999px;
+  padding: 4px;
+  background: rgba(255, 255, 255, 0.08);
+}
+.frame > * {
+  border-radius: 999px;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.frame-none {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.frame-neon {
+  background: linear-gradient(135deg, #22d3ee, #a855f7, #22d3ee);
+  box-shadow: 0 0 22px rgba(168, 85, 247, 0.65), inset 0 0 12px rgba(34, 211, 238, 0.5);
+}
+
+.frame-holo {
+  background: conic-gradient(from 0deg, #ff2e88, #ffd166, #22d3ee, #a855f7, #ff2e88);
+  animation: spin 6s linear infinite;
+}
+.frame-holo > * {
+  animation: spinBack 6s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes spinBack {
+  to {
+    transform: rotate(-360deg);
+  }
+}
+
+.frame-pulse {
+  background: linear-gradient(135deg, rgb(var(--accent-rgb)), rgba(255, 255, 255, 0.2));
+  animation: pulseRing 2.2s infinite;
+}
+@keyframes pulseRing {
+  0% {
+    box-shadow: 0 0 0 0 rgb(var(--accent-rgb) / 0.65);
+  }
+  70% {
+    box-shadow: 0 0 0 16px rgb(var(--accent-rgb) / 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgb(var(--accent-rgb) / 0);
+  }
+}
+
+.frame-flame {
+  background: linear-gradient(0deg, #f59e0b, #ef4444, #fbbf24);
+  background-size: 100% 300%;
+  animation: flameRun 2.4s ease-in-out infinite;
+  box-shadow: 0 0 26px rgba(239, 68, 68, 0.55);
+}
+@keyframes flameRun {
+  0%,
+  100% {
+    background-position: 50% 0%;
+  }
+  50% {
+    background-position: 50% 100%;
+  }
+}
+
+.frame-glitch {
+  background: linear-gradient(135deg, #22d3ee, #f43f5e);
+  animation: glitchShift 1.6s steps(2, end) infinite;
+}
+@keyframes glitchShift {
+  0%,
+  100% {
+    filter: hue-rotate(0deg);
+    transform: translate(0, 0);
+  }
+  40% {
+    filter: hue-rotate(60deg);
+    transform: translate(1px, -1px);
+  }
+  70% {
+    filter: hue-rotate(-45deg);
+    transform: translate(-1px, 1px);
+  }
+}
+
+.frame-prism {
+  background: conic-gradient(
+    from 180deg,
+    #ef4444,
+    #f59e0b,
+    #eab308,
+    #22c55e,
+    #06b6d4,
+    #3b82f6,
+    #8b5cf6,
+    #ef4444
+  );
+  filter: saturate(1.2);
+  animation: spin 9s linear infinite;
+}
+
+.frame-mythic {
+  background: conic-gradient(from 0deg, #fde68a, #f59e0b, #fff7cd, #f59e0b, #fde68a);
+  box-shadow:
+    0 0 26px rgba(245, 158, 11, 0.7),
+    0 0 60px rgba(253, 230, 138, 0.35);
+  animation: spin 8s linear infinite;
+}
+.frame-mythic > * {
+  animation: spinBack 8s linear infinite;
+}
+
+/* равномерное появление списков */
+.stagger > * {
+  animation: fadeUp 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.stagger > *:nth-child(1) { animation-delay: 0.01s; }
+.stagger > *:nth-child(2) { animation-delay: 0.03s; }
+.stagger > *:nth-child(3) { animation-delay: 0.05s; }
+.stagger > *:nth-child(4) { animation-delay: 0.07s; }
+.stagger > *:nth-child(5) { animation-delay: 0.09s; }
+.stagger > *:nth-child(6) { animation-delay: 0.11s; }
+.stagger > *:nth-child(7) { animation-delay: 0.13s; }
+.stagger > *:nth-child(8) { animation-delay: 0.15s; }
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+/* строка текста песни */
+.lyric-line {
+  @apply cursor-pointer py-2 text-xl font-semibold leading-snug text-white/25 transition-all duration-300;
+}
+.lyric-line:hover {
+  @apply text-white/55;
+}
+.lyric-active {
+  @apply scale-[1.03] text-white;
+  text-shadow: 0 0 28px rgb(var(--accent-rgb) / 0.65);
+}
