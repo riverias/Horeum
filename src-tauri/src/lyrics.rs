@@ -235,8 +235,9 @@ pub fn parse_lrc(raw: &str) -> Vec<LyricLine> {
 
 /// SoundCloud часто кладёт «Артист - Название» в тайтл, а в user — ник залившего.
 pub fn split_artist_title(artist: &str, title: &str) -> (String, String) {
+    const SEPARATORS: [&str; 4] = [" - ", " \u{2013} ", " \u{2014} ", " | "];
     let clean_title = RE_NOISE.replace_all(title, "").trim().to_string();
-    for sep in [" - ", " \u2013 ", " \u2014 ", " — "] {
+    for sep in SEPARATORS {
         if let Some((left, right)) = clean_title.split_once(sep) {
             if !left.trim().is_empty() && !right.trim().is_empty() {
                 return (left.trim().to_string(), right.trim().to_string());
