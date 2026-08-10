@@ -19,7 +19,10 @@ pub enum HoreumError {
 }
 
 impl Serialize for HoreumError {
-    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+    fn serialize<S>(&self, s: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
         s.serialize_str(&self.to_string())
     }
 }
@@ -29,5 +32,11 @@ pub type Result<T> = std::result::Result<T, HoreumError>;
 impl From<String> for HoreumError {
     fn from(v: String) -> Self {
         HoreumError::Other(v)
+    }
+}
+
+impl From<&str> for HoreumError {
+    fn from(v: &str) -> Self {
+        HoreumError::Other(v.to_string())
     }
 }
