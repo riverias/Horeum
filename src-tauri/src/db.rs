@@ -265,7 +265,7 @@ impl Db {
     pub fn update_profile(&self, patch: ProfilePatch) -> Result<Profile> {
         {
             let conn = self.conn.lock();
-            let mut set = |col: &str, val: Option<String>| -> Result<()> {
+            let set = |col: &str, val: Option<String>| -> Result<()> {
                 if let Some(v) = val {
                     conn.execute(
                         &format!("UPDATE profile SET {col} = ?1 WHERE id = 1"),
@@ -354,9 +354,10 @@ impl Db {
     pub fn liked_ids(&self) -> Result<Vec<i64>> {
         let conn = self.conn.lock();
         let mut stmt = conn.prepare("SELECT track_id FROM liked_tracks")?;
-        let ids = stmt
+        let ids: Vec<i64> = stmt
             .query_map([], |r| r.get::<_, i64>(0))?
-            .collect::<std::result::Result<Vec<_>, _>>()?;
+            .filter_map(|r| r.ok())
+            .collect();
         Ok(ids)
     }
 
@@ -365,7 +366,7 @@ impl Db {
         let mut stmt = conn.prepare(
             "SELECT payload FROM liked_tracks ORDER BY liked_at DESC LIMIT ?1 OFFSET ?2",
         )?;
-        let tracks = stmt
+        let tracks: Vec<Track> = stmt
             .query_map(params![limit, offset], |r| r.get::<_, String>(0))?
             .filter_map(|p| p.ok())
             .filter_map(|p| serde_json::from_str::<Track>(&p).ok())
@@ -409,7 +410,7 @@ impl Db {
             "SELECT payload, MAX(played_at) AS last
              FROM history GROUP BY track_id ORDER BY last DESC LIMIT ?1",
         )?;
-        let tracks = stmt
+        let tracks: Vec<Track> = stmt
             .query_map(params![limit], |r| r.get::<_, String>(0))?
             .filter_map(|p| p.ok())
             .filter_map(|p| serde_json::from_str::<Track>(&p).ok())
@@ -419,11 +420,11 @@ impl Db {
 
     pub fn recent_track_ids(&self, limit: i64) -> Result<Vec<i64>> {
         let conn = self.conn.lock();
-        let mut stmt =
-            conn.prepare("SELECT track_id FROM history ORDER BY id DESC LIMIT ?1")?;
-        let ids = stmt
+        let mut stmt = conn.prepare("SELECT track_id FROM history ORDER BY id DESC LIMIT ?1")?;
+        let ids: Vec<i64> = stmt
             .query_map(params![limit], |r| r.get::<_, i64>(0))?
-            .collect::<std::result::Result<Vec<_>, _>>()?;
+            .filter_map(|r| r.ok())
+            .collect();
         Ok(ids)
     }
 
@@ -439,16 +440,18 @@ impl Db {
              FROM history GROUP BY json_extract(payload,'$.artist_id')
              ORDER BY plays DESC LIMIT ?1",
         )?;
-        let rows = stmt.query_map(params![limit], |r| {
-            Ok((
-                r.get::<_, String>(0)?,
-                r.get::<_, i64>(1)?,
-                r.get::<_, Option<i64>>(2)?.unwrap_or(0),
-            ))
-        })?;
+        let rows: Vec<(String, i64, i64)> = stmt
+            .query_map(params![limit], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, i64>(1)?,
+                    r.get::<_, Option<i64>>(2)?.unwrap_or(0),
+                ))
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
         let mut out = Vec::new();
-        for row in rows {
-            let (payload, plays, secs) = row?;
+        for (payload, plays, secs) in rows {
             if let Ok(t) = serde_json::from_str::<Track>(&payload) {
                 out.push(ArtistStat {
                     artist: t.artist,
@@ -469,13 +472,16 @@ impl Db {
                     COUNT(*) AS plays
              FROM history GROUP BY g ORDER BY plays DESC LIMIT ?1",
         )?;
-        let rows = stmt.query_map(params![limit], |r| {
-            Ok(GenreStat {
-                genre: r.get::<_, String>(0)?,
-                plays: r.get::<_, i64>(1)?,
-            })
-        })?;
-        Ok(rows.filter_map(|r| r.ok()).collect())
+        let rows: Vec<GenreStat> = stmt
+            .query_map(params![limit], |r| {
+                Ok(GenreStat {
+                    genre: r.get::<_, String>(0)?,
+                    plays: r.get::<_, i64>(1)?,
+                })
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
+        Ok(rows)
     }
 
     pub fn stats(&self) -> Result<Stats> {
@@ -495,12 +501,12 @@ impl Db {
         let likes: i64 = conn.query_row("SELECT COUNT(*) FROM liked_tracks", [], |r| r.get(0))?;
         let playlists: i64 = conn.query_row("SELECT COUNT(*) FROM playlists", [], |r| r.get(0))?;
 
+        let since = (Utc::now() - ChronoDuration::days(14)).to_rfc3339();
         let mut stmt = conn.prepare(
             "SELECT substr(played_at,1,10) AS d, SUM(seconds)/60 AS m
              FROM history WHERE played_at >= ?1 GROUP BY d ORDER BY d",
         )?;
-        let since = (Utc::now() - ChronoDuration::days(14)).to_rfc3339();
-        let last_14_days = stmt
+        let last_14_days: Vec<DayStat> = stmt
             .query_map(params![since], |r| {
                 Ok(DayStat {
                     day: r.get::<_, String>(0)?,
@@ -526,12 +532,7 @@ impl Db {
 
     // ------------------------------------------------------------ playlists
 
-    pub fn create_playlist(
-        &self,
-        name: &str,
-        description: &str,
-        color: &str,
-    ) -> Result<Playlist> {
+    pub fn create_playlist(&self, name: &str, description: &str, color: &str) -> Result<Playlist> {
         let now = Utc::now().to_rfc3339();
         let id = {
             let conn = self.conn.lock();
@@ -595,24 +596,30 @@ impl Db {
     pub fn playlists(&self) -> Result<Vec<Playlist>> {
         let ids: Vec<i64> = {
             let conn = self.conn.lock();
-            let mut stmt = conn
-                .prepare("SELECT id FROM playlists ORDER BY pinned DESC, updated_at DESC")?;
-            stmt.query_map([], |r| r.get::<_, i64>(0))?
-                .collect::<std::result::Result<Vec<_>, _>>()?
+            let mut stmt =
+                conn.prepare("SELECT id FROM playlists ORDER BY pinned DESC, updated_at DESC")?;
+            let ids: Vec<i64> = stmt
+                .query_map([], |r| r.get::<_, i64>(0))?
+                .filter_map(|r| r.ok())
+                .collect();
+            ids
         };
         ids.into_iter().map(|id| self.playlist(id)).collect()
     }
 
     pub fn playlist(&self, id: i64) -> Result<Playlist> {
         let conn = self.conn.lock();
-        let mut stmt = conn.prepare(
-            "SELECT payload FROM playlist_tracks WHERE playlist_id = ?1 ORDER BY position ASC",
-        )?;
-        let tracks: Vec<Track> = stmt
-            .query_map(params![id], |r| r.get::<_, String>(0))?
-            .filter_map(|p| p.ok())
-            .filter_map(|p| serde_json::from_str::<Track>(&p).ok())
-            .collect();
+        let tracks: Vec<Track> = {
+            let mut stmt = conn.prepare(
+                "SELECT payload FROM playlist_tracks WHERE playlist_id = ?1 ORDER BY position ASC",
+            )?;
+            let tracks: Vec<Track> = stmt
+                .query_map(params![id], |r| r.get::<_, String>(0))?
+                .filter_map(|p| p.ok())
+                .filter_map(|p| serde_json::from_str::<Track>(&p).ok())
+                .collect();
+            tracks
+        };
 
         let duration = tracks.iter().map(|t| t.duration).sum::<i64>();
         let cover_fallback = tracks.iter().find_map(|t| t.artwork.clone());
@@ -814,9 +821,10 @@ impl Db {
     pub fn blocked_ids(&self) -> Result<Vec<i64>> {
         let conn = self.conn.lock();
         let mut stmt = conn.prepare("SELECT track_id FROM blocked_tracks")?;
-        Ok(stmt
+        let ids: Vec<i64> = stmt
             .query_map([], |r| r.get::<_, i64>(0))?
             .filter_map(|r| r.ok())
-            .collect())
+            .collect();
+        Ok(ids)
     }
 }
