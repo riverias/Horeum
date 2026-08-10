@@ -161,7 +161,12 @@ pub fn remove(app: &AppHandle, id: &str) -> Result<()> {
     Ok(())
 }
 
-// ─────────────────────────── поиск картинок ───────────────────────────
+// ────────────────────────── поиск картинок для фона ──────────────────────
+
+const PIN_API: &str = "https://www.pinterest.com/resource/BaseSearchResource/get/";
+const PIN_SEARCH: &str = "https://www.pinterest.com/search/pins/";
+const UNSPLASH_API: &str = "https://unsplash.com/napi/search/photos";
+const BING_IMAGES: &str = "https://www.bing.com/images/search";
 
 /// source: pinterest | unsplash | web | gif
 pub async fn image_search(query: &str, source: &str, limit: usize) -> Result<Vec<ImageHit>> {
@@ -196,7 +201,8 @@ async fn pinterest_api(query: &str, limit: usize) -> Result<Vec<ImageHit>> {
     .to_string();
     let source_url = format!("/search/pins/?q={}&rs=typed", urlencoding::encode(query));
     let url = format!(
-        "https://www.pinterest.com/resource/BaseSearchResource/get/?source_url={}&data={}",
+        "{}?source_url={}&data={}",
+        PIN_API,
         urlencoding::encode(&source_url),
         urlencoding::encode(&data)
     );
@@ -223,7 +229,7 @@ async fn pinterest_api(query: &str, limit: usize) -> Result<Vec<ImageHit>> {
         let orig = images
             .and_then(|i| i.get("orig"))
             .or_else(|| images.and_then(|i| i.get("736x")));
-        let Some(url) = orig
+        let Some(full) = orig
             .and_then(|o| o.get("url"))
             .and_then(|u| u.as_str())
             .map(String::from)
@@ -234,16 +240,21 @@ async fn pinterest_api(query: &str, limit: usize) -> Result<Vec<ImageHit>> {
             .and_then(|i| i.get("236x"))
             .and_then(|t| t.get("url"))
             .and_then(|u| u.as_str())
-            .unwrap_or(&url)
+            .unwrap_or(&full)
             .to_string();
-        let id = pin
+        let pin_id = pin
             .get("id")
             .and_then(|i| i.as_str())
             .unwrap_or("")
             .to_string();
+        let link = if pin_id.is_empty() {
+            String::new()
+        } else {
+            format!("https://www.pinterest.com/pin/{}/", pin_id)
+        };
         out.push(ImageHit {
-            id: if id.is_empty() { rand_id() } else { id.clone() },
-            url,
+            id: if pin_id.is_empty() { rand_id() } else { pin_id },
+            url: full,
             thumb,
             width: orig
                 .and_then(|o| o.get("width"))
@@ -260,24 +271,19 @@ async fn pinterest_api(query: &str, limit: usize) -> Result<Vec<ImageHit>> {
                 .unwrap_or("")
                 .to_string(),
             source: "pinterest".into(),
-            link: if id.is_empty() {
-                String::new()
-            } else {
-                format!("https://www.pinterest.com/pin/{id}/")
-            },
+            link,
         });
     }
     Ok(out)
 }
 
 async fn pinterest_html(query: &str, limit: usize) -> Result<Vec<ImageHit>> {
-    let url = format!(
-        "https://www.pinterest.com/search/pins/?q={}&rs=typed",
-        urlencoding::encode(query)
-    );
+    let url = format!("{}?q={}&rs=typed", PIN_SEARCH, urlencoding::encode(query));
     let body = CLIENT.get(&url).send().await?.text().await?;
-    let re = Regex::new(r"https://i\.pinimg\.com/(?:originals|736x|564x)/[A-Za-z0-9/_\-]+\.(?:jpg|jpeg|png|gif|webp)")
-        .map_err(err)?;
+    let re = Regex::new(
+        r"https://i\.pinimg\.com/(?:originals|736x|564x)/[A-Za-z0-9/_\-]+\.(?:jpg|jpeg|png|gif|webp)",
+    )
+    .map_err(err)?;
     let mut seen = std::collections::HashSet::new();
     let mut out = Vec::new();
     for m in re.find_iter(&body) {
@@ -303,7 +309,8 @@ async fn pinterest_html(query: &str, limit: usize) -> Result<Vec<ImageHit>> {
 
 async fn unsplash(query: &str, limit: usize) -> Result<Vec<ImageHit>> {
     let url = format!(
-        "https://unsplash.com/napi/search/photos?query={}&per_page={}&orientation=landscape",
+        "{}?query={}&per_page={}&orientation=landscape",
+        UNSPLASH_API,
         urlencoding::encode(query),
         limit.max(20)
     );
@@ -326,21 +333,23 @@ async fn unsplash(query: &str, limit: usize) -> Result<Vec<ImageHit>> {
             .pointer("/urls/raw")
             .or_else(|| it.pointer("/urls/full"))
             .and_then(|u| u.as_str())
-            .unwrap_or_default();
+            .unwrap_or_default()
+            .to_string();
         if full.is_empty() {
             continue;
         }
+        let big = format!("{}&w=2400&q=85&fm=jpg", full);
         out.push(ImageHit {
             id: it
                 .get("id")
                 .and_then(|i| i.as_str())
                 .unwrap_or("")
                 .to_string(),
-            url: format!("{full}&w=2400&q=85&fm=jpg"),
+            url: big,
             thumb: it
                 .pointer("/urls/small")
                 .and_then(|u| u.as_str())
-                .unwrap_or(full)
+                .unwrap_or(&full)
                 .to_string(),
             width: it.get("width").and_then(|w| w.as_i64()).unwrap_or(0),
             height: it.get("height").and_then(|h| h.as_i64()).unwrap_or(0),
@@ -367,7 +376,8 @@ async fn bing(query: &str, limit: usize, gif: bool) -> Result<Vec<ImageHit>> {
         "+filterui:imagesize-wallpaper"
     };
     let url = format!(
-        "https://www.bing.com/images/search?q={}&qft={}&first=1",
+        "{}?q={}&qft={}&first=1",
+        BING_IMAGES,
         urlencoding::encode(query),
         urlencoding::encode(filter)
     );
@@ -379,7 +389,7 @@ async fn bing(query: &str, limit: usize, gif: bool) -> Result<Vec<ImageHit>> {
         .text()
         .await?;
     let body = body.replace("&quot;", "\"").replace("&amp;", "&");
-    let re = Regex::new(r#""murl":"(https?://[^"]+?)""#).map_err(err)?;
+    let re = Regex::new("\"murl\":\"(https?://[^\"]+?)\"").map_err(err)?;
     let mut seen = std::collections::HashSet::new();
     let mut out = Vec::new();
     for cap in re.captures_iter(&body) {
