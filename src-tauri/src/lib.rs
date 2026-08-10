@@ -1,13 +1,20 @@
 //! Horeum — ядро приложения.
 
+pub mod bridges;
 pub mod commands;
+pub mod commands_ext;
 pub mod db;
+pub mod downloads;
 pub mod error;
 pub mod lyrics;
+pub mod media;
 pub mod models;
 pub mod profile;
+pub mod server;
 pub mod soundcloud;
+pub mod util;
 pub mod wave;
+pub mod youtube;
 
 use db::Db;
 use lyrics::LyricsClient;
@@ -25,6 +32,7 @@ pub struct AppState {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let dir = app
                 .path()
@@ -43,6 +51,14 @@ pub fn run() {
                 db,
                 lyrics: Arc::new(LyricsClient::new()),
             });
+
+            // локальный сервер: пользовательские фоны + приём токена из окна входа
+            let handle = app.handle().clone();
+            let media_dir = media::media_dir(&handle).unwrap_or_else(|_| dir.join("media"));
+            server::start(handle.clone(), media_dir);
+
+            // карта id -> videoId для треков с YouTube
+            youtube::load(&handle);
 
             // прогрев client_id в фоне, чтобы первый поиск был мгновенным
             tauri::async_runtime::spawn(async move {
@@ -100,6 +116,29 @@ pub fn run() {
             commands::stats,
             commands::get_settings,
             commands::set_setting,
+            // ─── новые возможности ───
+            commands_ext::local_base,
+            commands_ext::pick_media,
+            commands_ext::add_media_url,
+            commands_ext::media_list,
+            commands_ext::media_remove,
+            commands_ext::image_search,
+            commands_ext::download_track,
+            commands_ext::downloads_list,
+            commands_ext::download_remove,
+            commands_ext::downloads_dir,
+            commands_ext::pick_folder,
+            commands_ext::reveal_path,
+            commands_ext::save_text_file,
+            commands_ext::open_text_file,
+            commands_ext::yt_search,
+            commands_ext::yt_stream_url,
+            commands_ext::yt_related,
+            commands_ext::import_link,
+            commands_ext::parse_track_list,
+            commands_ext::sc_login_window,
+            commands_ext::close_login_window,
+            commands_ext::sc_login_browser,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Horeum");
