@@ -1,14 +1,20 @@
 //! Мосты к другим сервисам: Spotify, Яндекс Музыка, Deezer, ВК и просто текст.
 //!
-//! Потоки у них защищены DRM/токенами, поэтому мы берём оттуда СПИСКИ
-//! (артист + название), а звук подбираем в SoundCloud / YouTube. Так работает
-//! перенос плейлистов из любого сервиса одной ссылкой.
+//! Звук там защищён DRM/токенами, поэтому оттуда мы берём СПИСКИ
+//! (артист + название), а сам звук подбираем в SoundCloud / YouTube.
+//! Так работает перенос плейлистов из любого сервиса одной ссылкой.
 
 use crate::error::{HoreumError, Result};
 use crate::util::{err, CLIENT};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
+const SPOTIFY_EMBED: &str = "https://open.spotify.com/embed/";
+const YM_PLAYLIST: &str = "https://music.yandex.ru/handlers/playlist.jsx";
+const YM_ALBUM: &str = "https://music.yandex.ru/handlers/album.jsx";
+const DEEZER_API: &str = "https://api.deezer.com/";
+const HTTPS: &str = "https://";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BridgeTrack {
@@ -42,7 +48,7 @@ pub async fn from_link(url: &str) -> Result<BridgeList> {
         deezer(u).await
     } else if low.contains("vk.com") || low.contains("vk.ru") || low.contains("vkmusic") {
         Err(HoreumError::Other(
-            "ВК Музыка не отдаёт плейлисты без входа. Скопируйте список треков текстом и вставьте в поле «Импорт списком»".into(),
+            "ВК Музыка не отдаёт плейлисты без входа. Скопируйте список треков текстом и вставьте его в поле «Импорт списком»".into(),
         ))
     } else {
         Err(HoreumError::Other(
@@ -61,7 +67,7 @@ async fn spotify(url: &str) -> Result<BridgeList> {
     let kind = caps[1].to_string();
     let id = caps[2].to_string();
 
-    let embed = format!("https://open.spotify.com/embed/{}/{}", kind, id);
+    let embed = format!("{}{}/{}", SPOTIFY_EMBED, kind, id);
     let html = CLIENT
         .get(&embed)
         .header("Accept-Language", "ru,en;q=0.8")
@@ -70,8 +76,9 @@ async fn spotify(url: &str) -> Result<BridgeList> {
         .text()
         .await?;
 
-    let json_re = Regex::new(r#"<script id="__NEXT_DATA__" type="application/json">(.*?)</script>"#)
-        .map_err(err)?;
+    let json_re =
+        Regex::new(r#"<script id="__NEXT_DATA__" type="application/json">(.*?)</script>"#)
+            .map_err(err)?;
     let raw = json_re
         .captures(&html)
         .map(|c| c[1].to_string())
@@ -155,7 +162,8 @@ async fn yandex(url: &str) -> Result<BridgeList> {
         let owner = caps[1].to_string();
         let kind = caps[2].to_string();
         let api = format!(
-            "https://music.yandex.ru/handlers/playlist.jsx?owner={}&kinds={}&light=true&madeFor=&withLikesCount=false",
+            "{}?owner={}&kinds={}&light=true&madeFor=&withLikesCount=false",
+            YM_PLAYLIST,
             urlencoding::encode(&owner),
             kind
         );
@@ -194,7 +202,7 @@ async fn yandex(url: &str) -> Result<BridgeList> {
 
     if let Some(caps) = album_re.captures(url) {
         let album = caps[1].to_string();
-        let api = format!("https://music.yandex.ru/handlers/album.jsx?album={}", album);
+        let api = format!("{}?album={}", YM_ALBUM, album);
         let value: Value = CLIENT
             .get(&api)
             .header("Accept", "application/json")
@@ -248,14 +256,11 @@ fn yandex_track(item: &Value) -> Option<BridgeTrack> {
     Some(BridgeTrack {
         artist,
         title,
-        duration: item
-            .get("durationMs")
-            .and_then(|d| d.as_i64())
-            .unwrap_or(0),
+        duration: item.get("durationMs").and_then(|d| d.as_i64()).unwrap_or(0),
         cover: item
             .pointer("/albums/0/coverUri")
             .and_then(|c| c.as_str())
-            .map(|c| format!("https://{}", c.replace("%%", "400x400"))),
+            .map(|c| format!("{}{}", HTTPS, c.replace("%%", "400x400"))),
     })
 }
 
@@ -266,7 +271,7 @@ async fn deezer(url: &str) -> Result<BridgeList> {
     let caps = re
         .captures(url)
         .ok_or_else(|| HoreumError::Other("не нашёл id в ссылке Deezer".into()))?;
-    let api = format!("https://api.deezer.com/{}/{}", &caps[1], &caps[2]);
+    let api = format!("{}{}/{}", DEEZER_API, &caps[1], &caps[2]);
     let value: Value = CLIENT.get(&api).send().await?.json().await?;
     let name = value
         .get("title")
@@ -312,16 +317,19 @@ async fn deezer(url: &str) -> Result<BridgeList> {
     })
 }
 
-// ────────────────────── импорт списком (ВК и любое другое) ─────────────
+// ───────────────────── импорт списком (ВК и любое другое) ──────────────
 
 /// Парсит текст вида «Артист - Название» по строкам.
 pub fn parse_text(text: &str) -> BridgeList {
     const SEPARATORS: [&str; 5] = [" \u{2014} ", " \u{2013} ", " - ", " \u{2022} ", "\t"];
     let mut tracks = Vec::new();
     for raw in text.lines() {
-        let line = raw.trim().trim_start_matches(|c: char| c.is_ascii_digit() || c == '.' || c == ')');
-        let line = line.trim();
-        if line.is_empty() || line.chars().count() < 3 {
+        let trimmed = raw.trim();
+        let cleaned = trimmed.trim_start_matches(|c: char| {
+            c.is_ascii_digit() || c == '.' || c == ')' || c == ' '
+        });
+        let line = cleaned.trim();
+        if line.chars().count() < 3 {
             continue;
         }
         let mut artist = String::new();

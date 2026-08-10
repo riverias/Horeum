@@ -30,6 +30,9 @@ const INVIDIOUS: [&str; 4] = [
     "https://invidious.f5.si",
 ];
 
+const YT_WATCH: &str = "https://www.youtube.com/watch?v=";
+const YT_THUMB: &str = "https://i.ytimg.com/vi/";
+
 static MAP: Lazy<Mutex<HashMap<i64, String>>> = Lazy::new(|| Mutex::new(HashMap::new()));
 
 /// Стабильный отрицательный id для videoId.
@@ -141,8 +144,9 @@ fn piped_track(item: &Value) -> Option<Track> {
         artwork: item
             .get("thumbnail")
             .and_then(|t| t.as_str())
-            .map(String::from),
-        permalink_url: format!("https://www.youtube.com/watch?v={}", video_id),
+            .map(String::from)
+            .or_else(|| Some(format!("{}{}/hqdefault.jpg", YT_THUMB, video_id))),
+        permalink_url: format!("{}{}", YT_WATCH, video_id),
         genre: Some("YouTube".into()),
         tags: vec!["youtube".into()],
         playback_count: item.get("views").and_then(|v| v.as_i64()).unwrap_or(0),
@@ -179,8 +183,8 @@ fn invidious_track(item: &Value) -> Option<Track> {
             .pointer("/videoThumbnails/0/url")
             .and_then(|t| t.as_str())
             .map(String::from)
-            .or_else(|| Some(format!("https://i.ytimg.com/vi/{}/hqdefault.jpg", video_id))),
-        permalink_url: format!("https://www.youtube.com/watch?v={}", video_id),
+            .or_else(|| Some(format!("{}{}/hqdefault.jpg", YT_THUMB, video_id))),
+        permalink_url: format!("{}{}", YT_WATCH, video_id),
         genre: Some("YouTube".into()),
         tags: vec!["youtube".into()],
         playback_count: item.get("viewCount").and_then(|v| v.as_i64()).unwrap_or(0),
@@ -233,7 +237,11 @@ pub async fn search(app: &AppHandle, query: &str, limit: usize) -> Result<Vec<Tr
             continue;
         };
         let items = value.as_array().cloned().unwrap_or_default();
-        let tracks: Vec<Track> = items.iter().filter_map(invidious_track).take(limit).collect();
+        let tracks: Vec<Track> = items
+            .iter()
+            .filter_map(invidious_track)
+            .take(limit)
+            .collect();
         if !tracks.is_empty() {
             persist(app);
             return Ok(tracks);
@@ -269,13 +277,7 @@ pub async fn stream(id: i64) -> Result<StreamInfo> {
             .unwrap_or_default();
         let best = streams
             .iter()
-            .filter(|s| {
-                s.get("url").and_then(|u| u.as_str()).is_some()
-                    && s.get("mimeType")
-                        .and_then(|m| m.as_str())
-                        .map(|m| m.contains("audio"))
-                        .unwrap_or(true)
-            })
+            .filter(|s| s.get("url").and_then(|u| u.as_str()).is_some())
             .max_by_key(|s| s.get("bitrate").and_then(|b| b.as_i64()).unwrap_or(0));
         if let Some(best) = best {
             let bitrate = best.get("bitrate").and_then(|b| b.as_i64()).unwrap_or(0);
