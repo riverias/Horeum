@@ -22,11 +22,26 @@ type EngineEvents = {
   playing: (playing: boolean) => void
 }
 
+/** Сообщения браузера про прерванный play() — это не ошибка, а гонка загрузок. */
+function isBenignPlayError(e: unknown): boolean {
+  const err = e as { name?: string; message?: string }
+  const msg = String(err?.message ?? "")
+  return (
+    err?.name === "AbortError" ||
+    /interrupted by a new load request/i.test(msg) ||
+    /interrupted by a call to pause/i.test(msg) ||
+    /request was interrupted/i.test(msg)
+  )
+}
+
 /**
  * Аудиодвижок Horeum.
  *
- * HTMLAudioElement → MediaElementSource → [10x BiquadFilter] → BassBoost → Gain → Analyser → Destination
+ * HTMLAudioElement → MediaElementSource → [10x BiquadFilter] → Gain → Analyser → Destination
  * HLS-потоки прокидываются через hls.js (местами SoundCloud отдаёт только m3u8).
+ *
+ * Все загрузки пронумерованы (`loadSeq`): если пока грузился трек A пользователь
+ * включил трек B, старый play() просто тихо отменяется без красного тоста.
  */
 export class AudioEngine {
   readonly audio: HTMLAudioElement
@@ -36,6 +51,8 @@ export class AudioEngine {
   private gain: GainNode | null = null
   private analyser: AnalyserNode | null = null
   private hls: Hls | null = null
+  private loadSeq = 0
+  private pendingPlay: Promise<void> | null = null
   private listeners: { [K in keyof EngineEvents]: Set<EngineEvents[K]> } = {
     time: new Set(),
     ended: new Set(),
@@ -61,9 +78,12 @@ export class AudioEngine {
       this.emit("playing", true)
     })
     this.audio.addEventListener("pause", () => this.emit("playing", false))
-    this.audio.addEventListener("error", () =>
-      this.emit("error", "Не удалось воспроизвести трек"),
-    )
+    this.audio.addEventListener("error", () => {
+      // пустой src или отмена загрузки — это наша же смена трека, молчим
+      const code = this.audio.error?.code
+      if (!this.audio.currentSrc || code === MediaError.MEDIA_ERR_ABORTED) return
+      this.emit("error", "Не удалось воспроизвести трек")
+    })
   }
 
   // ------------------------------------------------------------- events
@@ -126,34 +146,76 @@ export class AudioEngine {
     values.forEach((v, i) => this.setEqBand(i, v))
   }
 
+  /** Номер последней загрузки — сторонний код может проверить актуальность. */
+  get generation(): number {
+    return this.loadSeq
+  }
+
   // ------------------------------------------------------------ playback
   async load(stream: StreamInfo, autoplay = true) {
+    const seq = ++this.loadSeq
+
+    // гасим текущее воспроизведение ДО подмены src, иначе браузер ругается
+    // «The play() request was interrupted by a new load request»
+    try {
+      this.audio.pause()
+    } catch {
+      /* ignore */
+    }
+    if (this.pendingPlay) {
+      await this.pendingPlay.catch(() => {})
+      if (seq !== this.loadSeq) return
+    }
+
     this.detachHls()
     this.emit("loading", true)
 
     const isHls = stream.protocol === "hls" || stream.url.includes(".m3u8")
     if (isHls && Hls.isSupported()) {
-      this.hls = new Hls({ enableWorker: true, lowLatencyMode: false, maxBufferLength: 60 })
-      this.hls.loadSource(stream.url)
-      this.hls.attachMedia(this.audio)
-      this.hls.on(Hls.Events.ERROR, (_e, data) => {
-        if (data.fatal) this.emit("error", `HLS: ${data.details}`)
+      const hls = new Hls({ enableWorker: true, lowLatencyMode: false, maxBufferLength: 60 })
+      this.hls = hls
+      hls.loadSource(stream.url)
+      hls.attachMedia(this.audio)
+      hls.on(Hls.Events.ERROR, (_e, data) => {
+        if (!data.fatal || seq !== this.loadSeq) return
+        this.emit("error", `HLS: ${data.details}`)
       })
     } else {
       this.audio.src = stream.url
       this.audio.load()
     }
 
-    if (autoplay) await this.play()
+    if (seq !== this.loadSeq) return
+    if (autoplay) await this.play(seq)
   }
 
-  async play() {
+  /**
+   * Запуск воспроизведения. Если передан `seq`, вызов отменяется,
+   * когда успела начаться более свежая загрузка.
+   */
+  async play(seq?: number) {
+    if (seq !== undefined && seq !== this.loadSeq) return
     this.ensureGraph()
-    if (this.ctx?.state === "suspended") await this.ctx.resume()
+    if (this.ctx?.state === "suspended") {
+      await this.ctx.resume().catch(() => {})
+    }
+    if (seq !== undefined && seq !== this.loadSeq) return
+
     try {
-      await this.audio.play()
+      const p = this.audio.play()
+      if (p) {
+        this.pendingPlay = p
+        await p
+      }
     } catch (e) {
+      if (isBenignPlayError(e)) return
+      if ((e as { name?: string })?.name === "NotAllowedError") {
+        this.emit("error", "Автозапуск заблокирован — нажми Play")
+        return
+      }
       this.emit("error", (e as Error).message)
+    } finally {
+      this.pendingPlay = null
     }
   }
 
@@ -198,15 +260,20 @@ export class AudioEngine {
 
   private detachHls() {
     if (this.hls) {
-      this.hls.destroy()
+      try {
+        this.hls.destroy()
+      } catch {
+        /* ignore */
+      }
       this.hls = null
     }
   }
 
   destroy() {
+    this.loadSeq++
     this.detachHls()
     this.audio.pause()
-    this.audio.src = ""
+    this.audio.removeAttribute("src")
     void this.ctx?.close()
   }
 }
