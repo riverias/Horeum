@@ -6,6 +6,7 @@ import {
   Download,
   Heart,
   Home,
+  Library,
   ListMusic,
   Plus,
   Radio,
@@ -26,6 +27,7 @@ const NAV: Array<{ id: ViewId; label: string; icon: typeof Home }> = [
   { id: "wave", label: "Моя волна", icon: Radio },
   { id: "moods", label: "Настроения", icon: Sparkles },
   { id: "charts", label: "Чарты", icon: BarChart3 },
+  { id: "playlists", label: "Плейлисты", icon: Library },
   { id: "library", label: "Любимое", icon: Heart },
   { id: "history", label: "История", icon: Clock3 },
   { id: "downloads", label: "Загрузки", icon: Download },
@@ -57,6 +59,8 @@ export function Sidebar() {
     }
   }
 
+  const pinned = [...playlists].sort((a, b) => Number(b.pinned) - Number(a.pinned))
+
   return (
     <aside className="flex w-[260px] shrink-0 flex-col border-r border-white/5 bg-ink-950/45 backdrop-blur-2xl">
       <nav className="space-y-1 p-3">
@@ -66,7 +70,7 @@ export function Sidebar() {
             onClick={() => navigate(id)}
             className={cn(
               "group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all",
-              view === id
+              view === id || (id === "playlists" && view === "playlist")
                 ? "bg-white/10 text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]"
                 : "text-white/55 hover:bg-white/5 hover:text-white",
             )}
@@ -75,7 +79,9 @@ export function Sidebar() {
               size={17}
               className={cn(
                 "transition-colors",
-                view === id ? "text-[rgb(var(--accent-rgb))]" : "group-hover:text-white",
+                view === id || (id === "playlists" && view === "playlist")
+                  ? "text-[rgb(var(--accent-rgb))]"
+                  : "group-hover:text-white",
               )}
             />
             {label}
@@ -89,9 +95,12 @@ export function Sidebar() {
       <div className="mx-3 my-1 h-px bg-white/5" />
 
       <div className="flex items-center justify-between px-5 pb-1 pt-2">
-        <span className="text-[11px] font-bold uppercase tracking-widest text-white/35">
-          Плейлисты
-        </span>
+        <button
+          onClick={() => navigate("playlists")}
+          className="text-[11px] font-bold uppercase tracking-widest text-white/35 transition-colors hover:text-white"
+        >
+          Мои плейлисты
+        </button>
         <button
           className="btn-icon h-6 w-6"
           onClick={() => setCreateOpen(true)}
@@ -102,12 +111,12 @@ export function Sidebar() {
       </div>
 
       <div className="scroll-area min-h-0 flex-1 px-3 pb-3">
-        {playlists.length === 0 && (
+        {pinned.length === 0 && (
           <p className="px-2 py-3 text-xs leading-relaxed text-white/30">
-            Пока пусто. Создай первый плейлист — или импортируй ссылку в настройках.
+            Пока пусто. Создай первый плейлист — или импортируй ссылку во вкладке «Плейлисты».
           </p>
         )}
-        {playlists.map((pl) => (
+        {pinned.map((pl) => (
           <button
             key={pl.id}
             onClick={() => navigate("playlist", pl.id)}

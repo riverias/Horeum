@@ -92,7 +92,12 @@ export function SearchView() {
           </Tabs.List>
 
           <Tabs.Content value="tracks">
-            <TrackList tracks={tracks} source="search" emptyText="Ничего не нашлось" />
+            <TrackList
+              tracks={tracks}
+              source="search"
+              layoutSwitcher
+              emptyText="Ничего не нашлось"
+            />
           </Tabs.Content>
 
           <Tabs.Content value="playlists">
@@ -104,11 +109,16 @@ export function SearchView() {
                     const full = await api.scPlaylist(p.id)
                     if (full.tracks.length) usePlayerStore.getState().playQueue(full.tracks, 0, "playlist")
                   }}
-                  className="card overflow-hidden p-3 text-left transition-transform hover:-translate-y-1"
+                  className="card group overflow-hidden p-3 text-left transition-transform hover:-translate-y-1"
                 >
                   <div className="grid aspect-square place-items-center overflow-hidden rounded-xl bg-ink-800">
                     {p.artwork ? (
-                      <img src={p.artwork} alt="" className="h-full w-full object-cover" />
+                      <img
+                        src={p.artwork}
+                        alt=""
+                        decoding="async"
+                        className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                      />
                     ) : (
                       <ListMusic size={28} className="text-white/20" />
                     )}
@@ -134,7 +144,7 @@ export function SearchView() {
                 >
                   <div className="mx-auto grid h-20 w-20 place-items-center overflow-hidden rounded-full bg-ink-800">
                     {u.avatar ? (
-                      <img src={u.avatar} alt="" className="h-full w-full object-cover" />
+                      <img src={u.avatar} alt="" decoding="async" className="h-full w-full object-cover" />
                     ) : (
                       <User size={24} className="text-white/20" />
                     )}

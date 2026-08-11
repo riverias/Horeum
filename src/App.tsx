@@ -17,6 +17,7 @@ import { MoodsView } from "@/views/MoodsView"
 import { ChartsView } from "@/views/ChartsView"
 import { LibraryView } from "@/views/LibraryView"
 import { HistoryView } from "@/views/HistoryView"
+import { PlaylistsView } from "@/views/PlaylistsView"
 import { PlaylistView } from "@/views/PlaylistView"
 import { ArtistView } from "@/views/ArtistView"
 import { ProfileView } from "@/views/ProfileView"
@@ -45,6 +46,8 @@ function CurrentView() {
       return <LibraryView />
     case "history":
       return <HistoryView />
+    case "playlists":
+      return <PlaylistsView />
     case "playlist":
       return <PlaylistView id={Number(param)} />
     case "artist":
