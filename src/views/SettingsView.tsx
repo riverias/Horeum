@@ -27,6 +27,7 @@ import { cn } from "@/lib/utils"
 import { useProfileStore } from "@/store/profile"
 import { useUiStore } from "@/store/ui"
 import { useAppearanceStore } from "@/store/appearance"
+import type { BgFit } from "@/store/appearance"
 import type { ImageHit, ImageSource, LoginBrowser, MediaItem, MediaKind } from "@/lib/typesExt"
 
 const HOTKEYS: Array<[string, string]> = [
@@ -60,6 +61,18 @@ const SWATCHES = [
   "#3b82f6",
   "#ec4899",
   "#ffffff",
+]
+
+/** Готовые запросы для быстрого старта поиска по Pinterest. */
+const PIN_IDEAS = [
+  "dark aesthetic",
+  "anime city night",
+  "neon rain",
+  "lofi room",
+  "minimal gradient",
+  "space nebula",
+  "cyberpunk street",
+  "vinyl records",
 ]
 
 function normalizeKind(kind: string): MediaKind {
@@ -171,6 +184,8 @@ export function SettingsView() {
   const [source, setSource] = useState<ImageSource>("pinterest")
   const [hits, setHits] = useState<ImageHit[]>([])
   const [searching, setSearching] = useState(false)
+  const [limit, setLimit] = useState(30)
+  const [applying, setApplying] = useState<string | null>(null)
 
   useEffect(() => {
     apix.mediaList().then(setMedia).catch(() => {})
@@ -178,6 +193,32 @@ export function SettingsView() {
   }, [downloadDir, setDownloadDir])
 
   const refreshMedia = () => apix.mediaList().then(setMedia).catch(() => {})
+
+  /** Живой поиск: ищем сами через 0,6 с после последней буквы. */
+  useEffect(() => {
+    const q = query.trim()
+    if (q.length < 2) {
+      setHits([])
+      return
+    }
+    let cancelled = false
+    setSearching(true)
+    const timer = window.setTimeout(async () => {
+      try {
+        const found = await apix.imageSearch(q, source, limit)
+        if (!cancelled) setHits(found)
+      } catch (e) {
+        if (!cancelled) toast((e as Error).message, "error")
+      } finally {
+        if (!cancelled) setSearching(false)
+      }
+    }, 600)
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+      window.clearTimeout(timer)
+    }
+  }, [query, source, limit, toast])
 
   const login = async () => {
     if (!token.trim()) return
@@ -213,21 +254,23 @@ export function SettingsView() {
     }
   }
 
-  const runImageSearch = async () => {
-    if (!query.trim()) return
-    setSearching(true)
-    try {
-      setHits(await apix.imageSearch(query.trim(), source, 30))
-    } catch (e) {
-      toast((e as Error).message, "error")
-    } finally {
-      setSearching(false)
-    }
-  }
-
   const useAsBackground = (url: string, kind: string = "image") => {
     ap.patch({ bgMode: "media", bgMediaUrl: url, bgMediaKind: normalizeKind(kind) })
     toast("Фон обновлён", "success")
+  }
+
+  /** Скачиваем картинку с Pinterest в медиатеку и ставим фоном. */
+  const applyHit = async (hit: ImageHit) => {
+    setApplying(hit.id)
+    try {
+      const item = await apix.addMediaUrl(hit.url)
+      await refreshMedia()
+      useAsBackground(item.url, item.kind)
+    } catch (e) {
+      toast((e as Error).message, "error")
+    } finally {
+      setApplying(null)
+    }
   }
 
   const tabCls =
@@ -246,6 +289,9 @@ export function SettingsView() {
           </Tabs.Trigger>
           <Tabs.Trigger value="look" className={tabCls}>
             Кастомизация
+          </Tabs.Trigger>
+          <Tabs.Trigger value="interface" className={tabCls}>
+            Интерфейс
           </Tabs.Trigger>
           <Tabs.Trigger value="playback" className={tabCls}>
             Воспроизведение
@@ -364,6 +410,111 @@ export function SettingsView() {
 
         {/* =================================================== КАСТОМИЗАЦИЯ */}
         <Tabs.Content value="look" className="space-y-6">
+          {/* большой поиск фонов */}
+          <section className="card space-y-4 p-6">
+            <div className="flex items-center gap-3">
+              <Search size={18} className="text-[rgb(var(--accent-rgb))]" />
+              <h2 className="text-lg font-bold">Поиск фонов в Pinterest</h2>
+            </div>
+
+            <div className="relative">
+              <Search
+                size={18}
+                className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-white/30"
+              />
+              <input
+                value={query}
+                onChange={(e) => {
+                  setQuery(e.target.value)
+                  setLimit(30)
+                }}
+                autoFocus
+                placeholder="Напиши что искать: dark aesthetic, аниме, космос, машины…"
+                className="input h-14 w-full pl-12 pr-28 text-base"
+              />
+              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs text-white/35">
+                {searching ? "ищу…" : hits.length > 0 ? `${hits.length} фонов` : ""}
+              </span>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {(["pinterest", "unsplash", "gif", "web"] as ImageSource[]).map((s) => (
+                <button
+                  key={s}
+                  className={cn("chip", source === s && "chip-active")}
+                  onClick={() => {
+                    setSource(s)
+                    setLimit(30)
+                  }}
+                >
+                  {s === "pinterest"
+                    ? "Pinterest"
+                    : s === "unsplash"
+                      ? "Unsplash"
+                      : s === "gif"
+                        ? "Гифки"
+                        : "Весь веб"}
+                </button>
+              ))}
+            </div>
+
+            {query.trim().length < 2 && (
+              <div className="flex flex-wrap gap-2">
+                <span className="self-center text-xs text-white/30">Попробуй:</span>
+                {PIN_IDEAS.map((idea) => (
+                  <button key={idea} className="chip" onClick={() => setQuery(idea)}>
+                    {idea}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {searching && hits.length === 0 && (
+              <div className="grid grid-cols-3 gap-3 md:grid-cols-4">
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <div key={i} className="skeleton aspect-square rounded-xl" />
+                ))}
+              </div>
+            )}
+
+            {hits.length > 0 && (
+              <>
+                <div className="grid max-h-[520px] grid-cols-3 gap-3 overflow-y-auto pr-1 md:grid-cols-4">
+                  {hits.map((h) => (
+                    <button
+                      key={h.id}
+                      disabled={applying === h.id}
+                      onClick={() => void applyHit(h)}
+                      title={h.title || "Поставить фоном"}
+                      className="group relative aspect-square overflow-hidden rounded-xl border border-white/10"
+                    >
+                      <img
+                        src={h.thumb || h.url}
+                        alt={h.title ?? ""}
+                        className="h-full w-full object-cover transition-transform group-hover:scale-105"
+                        decoding="async"
+                      />
+                      <span className="absolute inset-x-0 bottom-0 bg-black/65 p-1.5 text-[10px] font-semibold opacity-0 transition-opacity group-hover:opacity-100">
+                        {applying === h.id ? "Скачиваю…" : "Поставить фоном"}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                <button
+                  className="btn glass w-full"
+                  disabled={searching}
+                  onClick={() => setLimit((v) => Math.min(60, v + 15))}
+                >
+                  {searching ? "Загружаю…" : "Показать ещё"}
+                </button>
+              </>
+            )}
+
+            <p className="text-[11px] text-white/30">
+              Картинка скачивается в медиатеку приложения, поэтому фон останется даже без интернета.
+            </p>
+          </section>
+
           <section className="card space-y-4 p-6">
             <div className="flex items-center gap-3">
               <ImageIcon size={18} className="text-[rgb(var(--accent-rgb))]" />
@@ -464,72 +615,20 @@ export function SettingsView() {
           </section>
 
           <section className="card space-y-4 p-6">
-            <div className="flex items-center gap-3">
-              <Search size={18} className="text-[rgb(var(--accent-rgb))]" />
-              <h2 className="text-lg font-bold">Найти фон в интернете</h2>
-            </div>
+            <h2 className="text-lg font-bold">Эффекты фона</h2>
+
             <div className="flex flex-wrap gap-2">
-              {(["pinterest", "unsplash", "gif", "web"] as ImageSource[]).map((s) => (
+              {(["cover", "contain", "fill"] as BgFit[]).map((f) => (
                 <button
-                  key={s}
-                  className={cn("chip", source === s && "chip-active")}
-                  onClick={() => setSource(s)}
+                  key={f}
+                  className={cn("chip", ap.bgFit === f && "chip-active")}
+                  onClick={() => ap.patch({ bgFit: f })}
                 >
-                  {s === "pinterest"
-                    ? "Pinterest"
-                    : s === "unsplash"
-                      ? "Unsplash"
-                      : s === "gif"
-                        ? "Гифки"
-                        : "Весь веб"}
+                  {f === "cover" ? "Заполнить" : f === "contain" ? "Вписать целиком" : "Растянуть"}
                 </button>
               ))}
             </div>
-            <div className="flex gap-2">
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && void runImageSearch()}
-                placeholder="например: dark aesthetic, anime city, neon rain…"
-                className="input flex-1"
-              />
-              <button className="btn-accent" disabled={searching} onClick={() => void runImageSearch()}>
-                {searching ? "Ищу…" : "Найти"}
-              </button>
-            </div>
-            {hits.length > 0 && (
-              <div className="grid max-h-[420px] grid-cols-3 gap-3 overflow-y-auto md:grid-cols-4">
-                {hits.map((h) => (
-                  <button
-                    key={h.id}
-                    className="group relative aspect-square overflow-hidden rounded-xl border border-white/10"
-                    onClick={async () => {
-                      try {
-                        const item = await apix.addMediaUrl(h.url)
-                        await refreshMedia()
-                        useAsBackground(item.url, item.kind)
-                      } catch (e) {
-                        toast((e as Error).message, "error")
-                      }
-                    }}
-                  >
-                    <img
-                      src={h.thumb || h.url}
-                      alt={h.title ?? ""}
-                      className="h-full w-full object-cover transition-transform group-hover:scale-105"
-                      decoding="async"
-                    />
-                    <span className="absolute inset-x-0 bottom-0 bg-black/60 p-1 text-[10px] opacity-0 transition-opacity group-hover:opacity-100">
-                      Поставить фоном
-                    </span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </section>
 
-          <section className="card space-y-4 p-6">
-            <h2 className="text-lg font-bold">Эффекты фона</h2>
             <div className="grid gap-4 md:grid-cols-2">
               <Slider label="Блюр" value={ap.blur} min={0} max={40} suffix="px" onChange={(v) => ap.patch({ blur: v })} />
               <Slider label="Затемнение" value={ap.dim} min={0} max={90} suffix="%" onChange={(v) => ap.patch({ dim: v })} />
@@ -542,7 +641,31 @@ export function SettingsView() {
                 onChange={(v) => ap.patch({ saturation: v })}
               />
               <Slider
-                label="Масштаб"
+                label="Контраст"
+                value={ap.contrast}
+                min={50}
+                max={180}
+                suffix="%"
+                onChange={(v) => ap.patch({ contrast: v })}
+              />
+              <Slider
+                label="Оттенок"
+                value={ap.hue}
+                min={0}
+                max={360}
+                suffix="°"
+                onChange={(v) => ap.patch({ hue: v })}
+              />
+              <Slider
+                label="Прозрачность фона"
+                value={ap.bgOpacity}
+                min={10}
+                max={100}
+                suffix="%"
+                onChange={(v) => ap.patch({ bgOpacity: v })}
+              />
+              <Slider
+                label="Масштаб фона"
                 value={ap.scale}
                 min={100}
                 max={140}
@@ -550,6 +673,7 @@ export function SettingsView() {
                 onChange={(v) => ap.patch({ scale: v })}
               />
             </div>
+
             <Row title="Зерно (grain)" hint="Плёночный шум поверх фона">
               <Toggle checked={ap.grain} onChange={(v) => ap.patch({ grain: v })} />
             </Row>
@@ -560,11 +684,14 @@ export function SettingsView() {
               <Toggle checked={ap.videoMuted} onChange={(v) => ap.patch({ videoMuted: v })} />
             </Row>
           </section>
+        </Tabs.Content>
 
+        {/* ==================================================== ИНТЕРФЕЙС */}
+        <Tabs.Content value="interface" className="space-y-6">
           <section className="card space-y-4 p-6">
             <div className="flex items-center gap-3">
               <Palette size={18} className="text-[rgb(var(--accent-rgb))]" />
-              <h2 className="text-lg font-bold">Цвет и интерфейс</h2>
+              <h2 className="text-lg font-bold">Цвет приложения</h2>
             </div>
 
             <Row title="Свой акцентный цвет" hint="Перекрашивает всё приложение">
@@ -594,11 +721,23 @@ export function SettingsView() {
             <Row title="Красить иконки" hint="Иконки интерфейса в акцентном цвете">
               <Toggle checked={ap.iconAccent} onChange={(v) => ap.patch({ iconAccent: v })} />
             </Row>
-            <Row title="Анимации" hint="Отключи, если нужна максимальная производительность">
-              <Toggle checked={ap.animations} onChange={(v) => ap.patch({ animations: v })} />
+            <Row title="Свечение акцента" hint="Мягкая подсветка кнопок и полосы прогресса">
+              <Toggle checked={ap.accentGlow} onChange={(v) => ap.patch({ accentGlow: v })} />
             </Row>
+          </section>
 
+          <section className="card space-y-4 p-6">
+            <h2 className="text-lg font-bold">Размеры и плотность</h2>
             <div className="grid gap-4 md:grid-cols-2">
+              <Slider
+                label="Масштаб интерфейса"
+                value={ap.uiScale}
+                min={80}
+                max={140}
+                step={5}
+                suffix="%"
+                onChange={(v) => ap.patch({ uiScale: v })}
+              />
               <Slider
                 label="Прозрачность панелей"
                 value={ap.glass}
@@ -616,6 +755,13 @@ export function SettingsView() {
                 onChange={(v) => ap.patch({ radius: v })}
               />
             </div>
+
+            <Row title="Компактный режим" hint="Меньше отступов — больше треков на экране">
+              <Toggle checked={ap.compact} onChange={(v) => ap.patch({ compact: v })} />
+            </Row>
+            <Row title="Анимации" hint="Отключи, если нужна максимальная производительность">
+              <Toggle checked={ap.animations} onChange={(v) => ap.patch({ animations: v })} />
+            </Row>
 
             <button className="btn glass" onClick={() => ap.reset()}>
               <RotateCcw size={15} /> Сбросить оформление
