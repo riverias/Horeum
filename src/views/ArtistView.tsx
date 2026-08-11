@@ -1,9 +1,11 @@
 import { useQuery } from "@tanstack/react-query"
-import { ExternalLink, MapPin, Users } from "lucide-react"
+import { ExternalLink, MapPin, Play, Radio, Shuffle, Users } from "lucide-react"
 import { openUrl } from "@tauri-apps/plugin-opener"
 import { api } from "@/lib/api"
 import { TrackList } from "@/components/TrackList"
-import { formatCount } from "@/lib/utils"
+import { SimilarArtists } from "@/components/SimilarArtists"
+import { ActivityPanel } from "@/components/ActivityPanel"
+import { formatCount, shuffleArray } from "@/lib/utils"
 import { usePlayerStore } from "@/store/player"
 
 export function ArtistView({ id }: { id: number }) {
@@ -21,11 +23,11 @@ export function ArtistView({ id }: { id: number }) {
   })
 
   return (
-    <div className="space-y-7">
+    <div className="space-y-8">
       <header className="card flex flex-wrap items-center gap-6 p-7">
         <div className="h-32 w-32 shrink-0 overflow-hidden rounded-full bg-ink-800 shadow-panel">
           {user?.avatar ? (
-            <img src={user.avatar} alt="" className="h-full w-full object-cover" />
+            <img src={user.avatar} alt="" decoding="async" className="h-full w-full object-cover" />
           ) : (
             <div className="grid h-full w-full place-items-center text-white/25">
               <Users size={32} />
@@ -53,9 +55,25 @@ export function ArtistView({ id }: { id: number }) {
             </p>
           )}
 
-          <div className="mt-4 flex gap-2">
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              className="btn-accent"
+              disabled={!tracks.length}
+              onClick={() => usePlayerStore.getState().playQueue(tracks, 0, "library")}
+            >
+              <Play size={16} /> Слушать
+            </button>
+            <button
+              className="btn glass"
+              disabled={!tracks.length}
+              onClick={() =>
+                usePlayerStore.getState().playQueue(shuffleArray(tracks), 0, "library")
+              }
+            >
+              <Shuffle size={15} /> Вперемешку
+            </button>
             <button className="btn glass" onClick={() => void startWave(tracks[0]?.id)}>
-              Волна от артиста
+              <Radio size={15} /> Волна от артиста
             </button>
             {user && (
               <button className="btn glass" onClick={() => void openUrl(user.permalink_url)}>
@@ -66,7 +84,23 @@ export function ArtistView({ id }: { id: number }) {
         </div>
       </header>
 
-      <TrackList tracks={tracks} loading={isFetching} title="Треки" source="library" />
+      <div className="grid gap-7 xl:grid-cols-[1fr_320px]">
+        <div className="min-w-0 space-y-8">
+          <TrackList
+            tracks={tracks}
+            loading={isFetching}
+            title="Треки"
+            source="library"
+            layoutSwitcher
+          />
+          <SimilarArtists artistId={id} seeds={tracks} />
+        </div>
+
+        <aside className="space-y-5">
+          <ActivityPanel artistId={id} title="Новое у артиста" limit={8} />
+          <ActivityPanel title="Активность друзей" limit={10} />
+        </aside>
+      </div>
     </div>
   )
 }
