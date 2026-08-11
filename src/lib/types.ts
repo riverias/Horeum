@@ -188,6 +188,10 @@ export interface GenreInfo {
 
 export type RepeatMode = "off" | "all" | "one"
 export type PlaySource = "library" | "wave" | "mood" | "search" | "charts" | "playlist"
+
+/** Виды отображения списка треков. */
+export type TrackLayout = "rows" | "compact" | "table" | "grid" | "big" | "mini"
+
 export type ViewId =
   | "home"
   | "search"
@@ -196,6 +200,7 @@ export type ViewId =
   | "charts"
   | "library"
   | "history"
+  | "playlists"
   | "playlist"
   | "artist"
   | "profile"

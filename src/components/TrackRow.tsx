@@ -2,6 +2,8 @@ import { memo, useState } from "react"
 import * as ContextMenu from "@radix-ui/react-context-menu"
 import { useQuery } from "@tanstack/react-query"
 import {
+  ArrowDown,
+  ArrowUp,
   Ban,
   Download,
   Heart,
@@ -28,9 +30,21 @@ type Props = {
   onPlay: () => void
   source?: PlaySource
   onRemove?: () => void
+  /** Компактная строка — без обложки и с меньшими отступами. */
+  compact?: boolean
+  onMoveUp?: () => void
+  onMoveDown?: () => void
 }
 
-function TrackRowBase({ track, index, onPlay, onRemove }: Props) {
+function TrackRowBase({
+  track,
+  index,
+  onPlay,
+  onRemove,
+  compact = false,
+  onMoveUp,
+  onMoveDown,
+}: Props) {
   const current = usePlayerStore((s) => s.current)
   const playing = usePlayerStore((s) => s.playing)
   const toggle = usePlayerStore((s) => s.toggle)
@@ -72,7 +86,10 @@ function TrackRowBase({ track, index, onPlay, onRemove }: Props) {
         <div
           onDoubleClick={onPlay}
           className={cn(
-            "group grid grid-cols-[28px_44px_1fr_auto] items-center gap-3 rounded-xl px-3 py-2 transition-colors",
+            "group grid items-center gap-3 rounded-xl transition-colors",
+            compact
+              ? "grid-cols-[26px_1fr_auto] px-3 py-1"
+              : "grid-cols-[28px_44px_1fr_auto] px-3 py-2",
             isCurrent ? "bg-white/[0.09]" : "hover:bg-white/[0.06]",
           )}
         >
@@ -100,25 +117,28 @@ function TrackRowBase({ track, index, onPlay, onRemove }: Props) {
             </span>
           </button>
 
-          <div className="relative h-11 w-11 overflow-hidden rounded-lg bg-ink-800">
-            {track.artwork ? (
-              <img
-                src={track.artwork}
-                alt=""
-                decoding="async"
-                className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
-              />
-            ) : (
-              <div className="grid h-full w-full place-items-center text-white/25">
-                <Music2 size={16} />
-              </div>
-            )}
-          </div>
+          {!compact && (
+            <div className="relative h-11 w-11 overflow-hidden rounded-lg bg-ink-800">
+              {track.artwork ? (
+                <img
+                  src={track.artwork}
+                  alt=""
+                  decoding="async"
+                  className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
+                />
+              ) : (
+                <div className="grid h-full w-full place-items-center text-white/25">
+                  <Music2 size={16} />
+                </div>
+              )}
+            </div>
+          )}
 
-          <div className="min-w-0" onClick={onPlay}>
+          <div className={cn("min-w-0", compact && "flex items-baseline gap-2")} onClick={onPlay}>
             <div
               className={cn(
-                "truncate text-[14px] font-semibold",
+                "truncate font-semibold",
+                compact ? "text-[13px]" : "text-[14px]",
                 isCurrent ? "text-[rgb(var(--accent-rgb))]" : "text-white/95",
               )}
             >
@@ -129,16 +149,21 @@ function TrackRowBase({ track, index, onPlay, onRemove }: Props) {
                 e.stopPropagation()
                 navigate("artist", track.artist_id)
               }}
-              className="truncate text-[12px] text-white/45 transition-colors hover:text-white/80"
+              className={cn(
+                "truncate text-white/45 transition-colors hover:text-white/80",
+                compact ? "text-[11px]" : "text-[12px]",
+              )}
             >
               {track.artist}
             </button>
           </div>
 
           <div className="flex items-center gap-3">
-            <span className="hidden text-[11px] tabular-nums text-white/30 xl:inline">
-              {formatCount(track.playback_count)} просл.
-            </span>
+            {!compact && (
+              <span className="hidden text-[11px] tabular-nums text-white/30 xl:inline">
+                {formatCount(track.playback_count)} просл.
+              </span>
+            )}
             <button
               onClick={(e) => {
                 e.stopPropagation()
@@ -182,6 +207,22 @@ function TrackRowBase({ track, index, onPlay, onRemove }: Props) {
           <ContextMenu.Item className={item} onSelect={() => void startWave(track.id)}>
             <Radio size={14} /> Волна от трека
           </ContextMenu.Item>
+
+          {(onMoveUp || onMoveDown) && (
+            <>
+              <ContextMenu.Separator className="my-1.5 h-px bg-white/10" />
+              {onMoveUp && (
+                <ContextMenu.Item className={item} onSelect={onMoveUp}>
+                  <ArrowUp size={14} /> Переместить выше
+                </ContextMenu.Item>
+              )}
+              {onMoveDown && (
+                <ContextMenu.Item className={item} onSelect={onMoveDown}>
+                  <ArrowDown size={14} /> Переместить ниже
+                </ContextMenu.Item>
+              )}
+            </>
+          )}
 
           <ContextMenu.Separator className="my-1.5 h-px bg-white/10" />
 

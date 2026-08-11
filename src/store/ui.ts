@@ -1,11 +1,24 @@
 import { create } from "zustand"
 import { api } from "@/lib/api"
-import type { ViewId } from "@/lib/types"
+import type { TrackLayout, ViewId } from "@/lib/types"
 
 export interface Toast {
   id: number
   message: string
   kind: "info" | "success" | "error"
+}
+
+const LAYOUT_KEY = "horeum:trackLayout"
+
+function initialLayout(): TrackLayout {
+  try {
+    const raw = localStorage.getItem(LAYOUT_KEY)
+    const allowed: TrackLayout[] = ["rows", "compact", "table", "grid", "big", "mini"]
+    if (raw && (allowed as string[]).includes(raw)) return raw as TrackLayout
+  } catch {
+    /* localStorage может быть заблокирован */
+  }
+  return "rows"
 }
 
 interface UiState {
@@ -24,6 +37,7 @@ interface UiState {
   downloadDir: string
   karaoke: boolean
   youtubeEnabled: boolean
+  trackLayout: TrackLayout
 
   navigate: (view: ViewId, param?: number | string | null) => void
   toast: (message: string, kind?: Toast["kind"]) => void
@@ -40,6 +54,7 @@ interface UiState {
   setDownloadDir: (dir: string) => void
   setKaraoke: (v: boolean) => void
   setYoutubeEnabled: (v: boolean) => void
+  setTrackLayout: (v: TrackLayout) => void
 }
 
 let toastId = 0
@@ -64,6 +79,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   downloadDir: "",
   karaoke: true,
   youtubeEnabled: true,
+  trackLayout: initialLayout(),
 
   navigate: (view, param = null) => set({ view, viewParam: param }),
 
@@ -103,5 +119,14 @@ export const useUiStore = create<UiState>((set, get) => ({
   setYoutubeEnabled: (youtubeEnabled) => {
     set({ youtubeEnabled })
     save("youtube_enabled", youtubeEnabled)
+  },
+  setTrackLayout: (trackLayout) => {
+    set({ trackLayout })
+    try {
+      localStorage.setItem(LAYOUT_KEY, trackLayout)
+    } catch {
+      /* не критично */
+    }
+    save("track_layout", trackLayout)
   },
 }))
