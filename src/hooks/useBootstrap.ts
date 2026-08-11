@@ -8,6 +8,47 @@ import { useProfileStore } from "@/store/profile"
 import { useUiStore } from "@/store/ui"
 import { useAppearanceStore } from "@/store/appearance"
 
+const TOKEN_KEY = "horeum:sc_token"
+
+/** Токен храним и в настройках приложения, и локально — чтобы вход переживал перезапуск. */
+function rememberToken(token: string) {
+  try {
+    localStorage.setItem(TOKEN_KEY, token)
+  } catch {
+    /* ignore */
+  }
+  void api.setSetting("sc_token", token).catch(() => {})
+}
+
+function readLocalToken(): string {
+  try {
+    return localStorage.getItem(TOKEN_KEY) ?? ""
+  } catch {
+    return ""
+  }
+}
+
+/**
+ * Единая точка входа: приложение само подхватывает OAuth-токен,
+ * полученный из окна входа или из внешнего браузера.
+ */
+export async function applyScToken(token: string, silent = false) {
+  const ui = useUiStore.getState()
+  const clean = token.trim()
+  if (!clean) return
+  try {
+    const user = await api.login(clean)
+    rememberToken(clean)
+    useProfileStore.getState().setScUser(user)
+    await apix.closeLoginWindow().catch(() => {})
+    if (!silent) ui.toast(`Вошли как ${user.username} ✅`, "success")
+    await useProfileStore.getState().syncFromSc?.()
+    void api.syncScLikes().catch(() => {})
+  } catch (e) {
+    if (!silent) ui.toast(`Вход: ${(e as Error).message}`, "error")
+  }
+}
+
 /** Первичная инициализация: client_id, сессия, профиль, настройки, внешний вид. */
 export function useBootstrap() {
   useEffect(() => {
@@ -22,6 +63,8 @@ export function useBootstrap() {
         ui.toast(`Профиль: ${(e as Error).message}`, "error")
       }
 
+      let savedToken = readLocalToken()
+
       try {
         const settings = await api.getSettings()
         const volume = Number(settings.volume ?? 0.8)
@@ -31,6 +74,7 @@ export function useBootstrap() {
           ui.setVisualizer(settings.visualizer as "bars")
         if (Array.isArray(settings.eq)) engine.setEqPreset(settings.eq as number[])
         else engine.setEqPreset(EQ_PRESETS["Ровно"])
+        if (!savedToken && typeof settings.sc_token === "string") savedToken = settings.sc_token
 
         // оформление: свой фон, блюр, эффекты, акцентный цвет
         useAppearanceStore.getState().hydrate(settings.appearance)
@@ -50,6 +94,8 @@ export function useBootstrap() {
         await api.init()
         const session = await api.session()
         useProfileStore.getState().setScUser(session.user)
+        // не вошли, но токен с прошлого раза есть — восстанавливаем вход молча
+        if (!session.logged_in && savedToken) await applyScToken(savedToken, true)
       } catch (e) {
         ui.toast(`SoundCloud: ${(e as Error).message}`, "error")
       }
@@ -59,20 +105,8 @@ export function useBootstrap() {
     })()
 
     // Вход в SoundCloud: окно/браузер отдаёт токен обратно в приложение
-    listen<string>("sc-token", async (event) => {
-      const token = String(event.payload || "").trim()
-      if (!token) return
-      const uiNow = useUiStore.getState()
-      try {
-        const user = await api.login(token)
-        useProfileStore.getState().setScUser(user)
-        await apix.closeLoginWindow().catch(() => {})
-        uiNow.toast(`Вошли как ${user.username} ✅`, "success")
-        await useProfileStore.getState().syncFromSc?.()
-        void api.syncScLikes().catch(() => {})
-      } catch (e) {
-        uiNow.toast(`Вход: ${(e as Error).message}`, "error")
-      }
+    listen<string>("sc-token", (event) => {
+      void applyScToken(String(event.payload || ""))
     })
       .then((un) => {
         unlistenToken = un

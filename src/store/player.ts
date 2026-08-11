@@ -50,6 +50,8 @@ interface PlayerState {
 let bootstrapped = false
 let extendingWave = false
 let sessionTimer: ReturnType<typeof setTimeout> | null = null
+/** Номер последнего запроса трека: поздние ответы старых загрузок отбрасываем. */
+let loadSeq = 0
 
 /** Треки YouTube приходят с отрицательным id и не имеют transcodings SoundCloud. */
 function playable(t: Track): boolean {
@@ -206,7 +208,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     const current = queue[index]
     if (shuffle) {
       const rest = shuffleArray(queue.filter((_, i) => i !== index))
-      set({ shuffle, queue: current ? [current, ...rest] : rest, index: current ? 0 : 0 })
+      set({ shuffle, queue: current ? [current, ...rest] : rest, index: 0 })
     } else {
       const restored = originalQueue.length ? originalQueue : queue
       const newIndex = current ? Math.max(0, restored.findIndex((t) => t.id === current.id)) : 0
@@ -318,13 +320,18 @@ async function loadCurrent(
   const { queue, index } = get()
   const track = queue[index]
   if (!track) return
+  const seq = ++loadSeq
   set({ current: track, loading: true, positionMs: seekMs, listenedSeconds: 0 })
   try {
     const stream = await streamFor(track)
+    // пока шла сеть, пользователь успел включить другой трек — тихо выходим
+    if (seq !== loadSeq) return
     await engine.load(stream, autoplay)
+    if (seq !== loadSeq) return
     if (seekMs > 0) engine.seek(seekMs)
     saveSession(get, true)
   } catch (e) {
+    if (seq !== loadSeq) return
     useUiStore.getState().toast(`${track.title}: ${(e as Error).message}`, "error")
     set({ loading: false })
     // переходим к следующему, если трек недоступен
