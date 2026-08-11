@@ -27,7 +27,7 @@ import { cn } from "@/lib/utils"
 import { useProfileStore } from "@/store/profile"
 import { useUiStore } from "@/store/ui"
 import { useAppearanceStore } from "@/store/appearance"
-import type { ImageHit, ImageSource, LoginBrowser, MediaItem } from "@/lib/typesExt"
+import type { ImageHit, ImageSource, LoginBrowser, MediaItem, MediaKind } from "@/lib/typesExt"
 
 const HOTKEYS: Array<[string, string]> = [
   ["Space", "Играть / пауза"],
@@ -62,13 +62,11 @@ const SWATCHES = [
   "#ffffff",
 ]
 
-function Toggle({
-  checked,
-  onChange,
-}: {
-  checked: boolean
-  onChange: (v: boolean) => void
-}) {
+function normalizeKind(kind: string): MediaKind {
+  return kind === "video" ? "video" : kind === "gif" ? "gif" : "image"
+}
+
+function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
   return (
     <Switch.Root
       checked={checked}
@@ -164,6 +162,7 @@ export function SettingsView() {
   const [token, setToken] = useState("")
   const [showToken, setShowToken] = useState(false)
   const [importUrl, setImportUrl] = useState("")
+  const [bgUrl, setBgUrl] = useState("")
   const [importText, setImportText] = useState("")
   const [busy, setBusy] = useState(false)
 
@@ -226,12 +225,8 @@ export function SettingsView() {
     }
   }
 
-  const useAsBackground = async (url: string, kind: MediaItem["kind"] = "image") => {
-    ap.patch({
-      bgMode: "media",
-      bgMediaUrl: url,
-      bgMediaKind: (kind === "video" ? "video" : kind === "gif" ? "gif" : "image") as never,
-    })
+  const useAsBackground = (url: string, kind: string = "image") => {
+    ap.patch({ bgMode: "media", bgMediaUrl: url, bgMediaKind: normalizeKind(kind) })
     toast("Фон обновлён", "success")
   }
 
@@ -369,7 +364,6 @@ export function SettingsView() {
 
         {/* =================================================== КАСТОМИЗАЦИЯ */}
         <Tabs.Content value="look" className="space-y-6">
-          {/* свой фон */}
           <section className="card space-y-4 p-6">
             <div className="flex items-center gap-3">
               <ImageIcon size={18} className="text-[rgb(var(--accent-rgb))]" />
@@ -391,7 +385,7 @@ export function SettingsView() {
               </button>
             </div>
 
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 className="btn glass"
                 onClick={async () => {
@@ -399,7 +393,7 @@ export function SettingsView() {
                     const item = await apix.pickMedia("any")
                     if (!item) return
                     await refreshMedia()
-                    await useAsBackground(item.url, item.kind as MediaItem["kind"])
+                    useAsBackground(item.url, item.kind)
                   } catch (e) {
                     toast((e as Error).message, "error")
                   }
@@ -407,34 +401,29 @@ export function SettingsView() {
               >
                 <FolderOpen size={15} /> Выбрать файл с ПК
               </button>
+              <input
+                value={bgUrl}
+                onChange={(e) => setBgUrl(e.target.value)}
+                placeholder="https://… (картинка, GIF или видео)"
+                className="input flex-1"
+              />
               <button
                 className="btn glass"
                 onClick={async () => {
-                  const url = window.prompt ? "" : ""
-                  void url
-                  const value = importUrl.trim()
-                  if (!value) {
-                    toast("Вставь ссылку в поле ниже и нажми ещё раз", "info")
-                    return
-                  }
+                  const value = bgUrl.trim()
+                  if (!value) return
                   try {
                     const item = await apix.addMediaUrl(value)
-                    setImportUrl("")
+                    setBgUrl("")
                     await refreshMedia()
-                    await useAsBackground(item.url, item.kind as MediaItem["kind"])
+                    useAsBackground(item.url, item.kind)
                   } catch (e) {
                     toast((e as Error).message, "error")
                   }
                 }}
               >
-                <Link2 size={15} /> Добавить по ссылке
+                <Link2 size={15} /> Добавить
               </button>
-              <input
-                value={importUrl}
-                onChange={(e) => setImportUrl(e.target.value)}
-                placeholder="https://… (картинка, GIF или видео)"
-                className="input flex-1"
-              />
             </div>
 
             {media.length > 0 && (
@@ -454,7 +443,7 @@ export function SettingsView() {
                     )}
                     <button
                       className="absolute inset-0 bg-black/50 text-xs font-semibold opacity-0 transition-opacity group-hover:opacity-100"
-                      onClick={() => void useAsBackground(m.url, m.kind as MediaItem["kind"])}
+                      onClick={() => useAsBackground(m.url, m.kind)}
                     >
                       Поставить фоном
                     </button>
@@ -474,7 +463,6 @@ export function SettingsView() {
             )}
           </section>
 
-          {/* поиск фонов */}
           <section className="card space-y-4 p-6">
             <div className="flex items-center gap-3">
               <Search size={18} className="text-[rgb(var(--accent-rgb))]" />
@@ -519,7 +507,7 @@ export function SettingsView() {
                       try {
                         const item = await apix.addMediaUrl(h.url)
                         await refreshMedia()
-                        await useAsBackground(item.url, item.kind as MediaItem["kind"])
+                        useAsBackground(item.url, item.kind)
                       } catch (e) {
                         toast((e as Error).message, "error")
                       }
@@ -540,7 +528,6 @@ export function SettingsView() {
             )}
           </section>
 
-          {/* эффекты фона */}
           <section className="card space-y-4 p-6">
             <h2 className="text-lg font-bold">Эффекты фона</h2>
             <div className="grid gap-4 md:grid-cols-2">
@@ -563,18 +550,17 @@ export function SettingsView() {
                 onChange={(v) => ap.patch({ scale: v })}
               />
             </div>
-            <Row title="Зерно (grain)" hient="Плёночный шум поверх фона">
+            <Row title="Зерно (grain)" hint="Плёночный шум поверх фона">
               <Toggle checked={ap.grain} onChange={(v) => ap.patch({ grain: v })} />
             </Row>
             <Row title="Виньетка" hint="Затемнение по краям">
               <Toggle checked={ap.vignette} onChange={(v) => ap.patch({ vignette: v })} />
             </Row>
-            <Row title="Звук видео-фона выключен" hint="Чтобы видео не мешало музыке">
+            <Row title="Видео-фон без звука" hint="Чтобы видео не мешало музыке">
               <Toggle checked={ap.videoMuted} onChange={(v) => ap.patch({ videoMuted: v })} />
             </Row>
           </section>
 
-          {/* цвет и интерфейс */}
           <section className="card space-y-4 p-6">
             <div className="flex items-center gap-3">
               <Palette size={18} className="text-[rgb(var(--accent-rgb))]" />
@@ -582,10 +568,7 @@ export function SettingsView() {
             </div>
 
             <Row title="Свой акцентный цвет" hint="Перекрашивает всё приложение">
-              <Toggle
-                checked={ap.useCustomAccent}
-                onChange={(v) => ap.patch({ useCustomAccent: v })}
-              />
+              <Toggle checked={ap.useCustomAccent} onChange={(v) => ap.patch({ useCustomAccent: v })} />
             </Row>
 
             <div className="flex flex-wrap items-center gap-3">
@@ -678,7 +661,7 @@ export function SettingsView() {
 
             <div className="pt-2">
               <Slider
-                label="Моя волна: предсказуемость ↔ открытия"
+                label="Моя волна: привычное ↔ новое"
                 value={Math.round(discovery * 100)}
                 min={0}
                 max={100}
@@ -744,7 +727,7 @@ export function SettingsView() {
           <section className="card space-y-3 p-6">
             <h2 className="text-lg font-bold">Импорт плейлиста по ссылке</h2>
             <p className="text-sm text-white/45">
-              SoundCloud — импортируется целиком. Spotify, Яндекс.Музыка, Deezer, YouTube —
+              SoundCloud импортируется целиком. Spotify, Яндекс.Музыка, Deezer, YouTube —
               берём список треков и находим их в доступных источниках.
             </p>
             <div className="flex flex-wrap gap-2">
@@ -829,9 +812,7 @@ export function SettingsView() {
                 onClick={async () => {
                   try {
                     const liked = await api.likedTracks()
-                    const text = liked
-                      .map((t) => `${t.artist} — ${t.title}`)
-                      .join("\n")
+                    const text = liked.map((t) => `${t.artist} — ${t.title}`).join("\n")
                     const path = await apix.saveTextFile("horeum-liked.txt", text)
                     if (path) toast("Экспорт готов", "success")
                   } catch (e) {
