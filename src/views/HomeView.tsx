@@ -4,6 +4,10 @@ import { Clock3, Radio, Sparkles, TrendingUp } from "lucide-react"
 import { api } from "@/lib/api"
 import { TrackList } from "@/components/TrackList"
 import { SkeletonGrid } from "@/components/SkeletonList"
+import { SmartPlaylists } from "@/components/SmartPlaylists"
+import { ActivityPanel } from "@/components/ActivityPanel"
+import { PlaybackTuning } from "@/components/PlaybackTuning"
+import { NetworkPanel } from "@/components/NetworkPanel"
 import { formatCount } from "@/lib/utils"
 import { usePlayerStore } from "@/store/player"
 import { useProfileStore } from "@/store/profile"
@@ -83,6 +87,9 @@ export function HomeView() {
         </div>
       </motion.section>
 
+      {/* умные подборки */}
+      <SmartPlaylists />
+
       {/* настроения */}
       <section className="space-y-4">
         <h2 className="section-title text-xl">Настроение сейчас</h2>
@@ -105,49 +112,71 @@ export function HomeView() {
         </div>
       </section>
 
-      {/* чарты */}
-      <section className="space-y-4">
-        <div className="flex items-end justify-between">
-          <h2 className="section-title text-xl">Набирают популярность</h2>
-          <button className="text-xs text-white/40 hover:text-white" onClick={() => navigate("charts")}>
-            Все чарты →
-          </button>
-        </div>
-        {chartsLoading ? (
-          <SkeletonGrid count={6} />
-        ) : (
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
-            {charts.slice(0, 6).map((t, i) => (
-              <motion.button
-                key={t.id}
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.04 }}
-                whileHover={{ y: -5 }}
-                onClick={() => usePlayerStore.getState().playQueue(charts, i, "charts")}
-                className="card overflow-hidden p-3 text-left"
+      {/* чарты + боковые панели */}
+      <div className="grid gap-7 xl:grid-cols-[1fr_320px]">
+        <div className="min-w-0 space-y-8">
+          <section className="space-y-4">
+            <div className="flex items-end justify-between">
+              <h2 className="section-title text-xl">Набирают популярность</h2>
+              <button
+                className="text-xs text-white/40 hover:text-white"
+                onClick={() => navigate("charts")}
               >
-                <div className="aspect-square overflow-hidden rounded-xl bg-ink-800">
-                  {t.artwork && <img src={t.artwork} alt="" className="h-full w-full object-cover" />}
-                </div>
-                <p className="mt-2.5 truncate text-[13px] font-semibold">{t.title}</p>
-                <p className="truncate text-[11px] text-white/35">{t.artist}</p>
-                <p className="mt-1 text-[10px] text-white/25">{formatCount(t.playback_count)} просл.</p>
-              </motion.button>
-            ))}
-          </div>
-        )}
-      </section>
+                Все чарты →
+              </button>
+            </div>
+            {chartsLoading ? (
+              <SkeletonGrid count={6} />
+            ) : (
+              <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">
+                {charts.slice(0, 8).map((t, i) => (
+                  <motion.button
+                    key={t.id}
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: i * 0.04 }}
+                    whileHover={{ y: -5 }}
+                    onClick={() => usePlayerStore.getState().playQueue(charts, i, "charts")}
+                    className="card overflow-hidden p-3 text-left"
+                  >
+                    <div className="aspect-square overflow-hidden rounded-xl bg-ink-800">
+                      {t.artwork && (
+                        <img
+                          src={t.artwork}
+                          alt=""
+                          decoding="async"
+                          className="h-full w-full object-cover"
+                        />
+                      )}
+                    </div>
+                    <p className="mt-2.5 truncate text-[13px] font-semibold">{t.title}</p>
+                    <p className="truncate text-[11px] text-white/35">{t.artist}</p>
+                    <p className="mt-1 text-[10px] text-white/25">
+                      {formatCount(t.playback_count)} просл.
+                    </p>
+                  </motion.button>
+                ))}
+              </div>
+            )}
+          </section>
 
-      {/* история */}
-      {history.length > 0 && (
-        <TrackList
-          tracks={history}
-          title="Вы слушали"
-          source="library"
-          icon={<Clock3 size={18} />}
-        />
-      )}
+          {history.length > 0 && (
+            <TrackList
+              tracks={history}
+              title="Вы слушали"
+              source="library"
+              icon={<Clock3 size={18} />}
+              layoutSwitcher
+            />
+          )}
+        </div>
+
+        <aside className="space-y-5">
+          <ActivityPanel limit={10} />
+          <PlaybackTuning />
+          <NetworkPanel />
+        </aside>
+      </div>
     </div>
   )
 }
