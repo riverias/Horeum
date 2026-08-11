@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import * as Tabs from "@radix-ui/react-tabs"
 import {
@@ -9,12 +10,36 @@ import {
   XAxis,
   YAxis,
 } from "recharts"
-import { Check, Flame, Lock, Music4, Sparkles, Trophy } from "lucide-react"
+import {
+  Check,
+  Flame,
+  Image as ImageIcon,
+  Link2,
+  Lock,
+  Music4,
+  Pencil,
+  RefreshCw,
+  Timer,
+  Trophy,
+} from "lucide-react"
 import { api } from "@/lib/api"
-import { cn, formatListenTime } from "@/lib/utils"
+import { apix } from "@/lib/apiExt"
+import { cn } from "@/lib/utils"
 import { useProfileStore } from "@/store/profile"
+import { usePlayerStore } from "@/store/player"
 import { useUiStore } from "@/store/ui"
+import { PromptDialog } from "@/components/Dialog"
 import type { Unlockable } from "@/lib/types"
+
+/** Часы / минуты / секунды из секунд. */
+function splitTime(totalSeconds: number) {
+  const s = Math.max(0, Math.floor(totalSeconds))
+  return {
+    hours: Math.floor(s / 3600),
+    minutes: Math.floor((s % 3600) / 60),
+    seconds: s % 60,
+  }
+}
 
 function CosmeticGrid({
   items,
@@ -66,11 +91,22 @@ function CosmeticGrid({
   )
 }
 
+type DialogKind = null | "name" | "bio" | "avatarUrl" | "bannerUrl"
+
 export function ProfileView() {
   const profile = useProfileStore((s) => s.profile)
   const cosmetics = useProfileStore((s) => s.cosmetics)
+  const scUser = useProfileStore((s) => s.scUser)
   const patch = useProfileStore((s) => s.patch)
+  const load = useProfileStore((s) => s.load)
+  const syncFromSc = useProfileStore((s) => s.syncFromSc)
+  const isPlaying = usePlayerStore((s) => s.isPlaying)
   const toast = useUiStore((s) => s.toast)
+
+  const [dialog, setDialog] = useState<DialogKind>(null)
+  /** Секунды, натикавшие в этой сессии поверх сохранённого значения. */
+  const [ticked, setTicked] = useState(0)
+  const baseRef = useRef(profile?.seconds_listened ?? 0)
 
   const { data: achievements = [] } = useQuery({
     queryKey: ["achievements"],
@@ -78,12 +114,33 @@ export function ProfileView() {
   })
   const { data: stats } = useQuery({ queryKey: ["stats"], queryFn: api.stats })
 
+  // база обновилась с сервера — сбрасываем локальный тикер
+  useEffect(() => {
+    baseRef.current = profile?.seconds_listened ?? 0
+    setTicked(0)
+  }, [profile?.seconds_listened])
+
+  // тикаем в реальном времени, пока играет трек
+  useEffect(() => {
+    if (!isPlaying) return
+    const id = window.setInterval(() => setTicked((v) => v + 1), 1000)
+    return () => window.clearInterval(id)
+  }, [isPlaying])
+
+  // раз в минуту сверяемся с бэкендом
+  useEffect(() => {
+    const id = window.setInterval(() => void load().catch(() => {}), 60_000)
+    return () => window.clearInterval(id)
+  }, [load])
+
   if (!profile) return null
 
   const backgrounds = cosmetics.filter((c) => c.kind === "background")
   const frames = cosmetics.filter((c) => c.kind === "frame")
   const accents = cosmetics.filter((c) => c.kind === "accent")
   const unlocked = achievements.filter((a) => a.unlocked).length
+
+  const live = splitTime(baseRef.current + (isPlaying ? ticked : 0))
 
   const apply = async (key: string, value: string) => {
     try {
@@ -93,41 +150,89 @@ export function ProfileView() {
     }
   }
 
-  const tabCls = (v: string) =>
+  /** Нативный диалог выбора файла на ПК. */
+  const pickImage = async (key: "avatar" | "banner") => {
+    try {
+      const item = await apix.pickMedia("image")
+      if (!item) return
+      await apply(key, item.url)
+      toast(key === "avatar" ? "Аватар обновлён" : "Баннер обновлён", "success")
+    } catch (e) {
+      toast((e as Error).message, "error")
+    }
+  }
+
+  const tabCls =
     "rounded-xl px-4 py-2 text-sm font-medium text-white/45 transition-colors data-[state=active]:bg-white/10 data-[state=active]:text-white"
 
   return (
     <div className="space-y-8">
+      {/* баннер */}
+      {profile.banner && (
+        <div className="relative h-44 overflow-hidden rounded-3xl">
+          <img src={profile.banner} alt="" className="h-full w-full object-cover" decoding="async" />
+          <div className="absolute inset-0 bg-gradient-to-t from-ink-950 via-ink-950/30 to-transparent" />
+          <button
+            className="btn glass absolute bottom-3 right-3"
+            onClick={() => void pickImage("banner")}
+          >
+            <ImageIcon size={14} /> Заменить баннер
+          </button>
+        </div>
+      )}
+
       {/* шапка профиля */}
       <header className="card relative overflow-hidden p-8">
         <div className={`bg-scene bg-${profile.background} opacity-60`} />
         <div className="relative z-10 flex flex-wrap items-center gap-6">
-          <div className={`frame frame-${profile.frame} h-28 w-28 shrink-0`}>
-            {profile.avatar ? (
-              <img src={profile.avatar} alt="" />
-            ) : (
-              <div className="grid h-full w-full place-items-center rounded-full bg-ink-800 font-display text-3xl font-black">
-                {profile.display_name.slice(0, 1).toUpperCase()}
-              </div>
-            )}
+          <div className="group relative shrink-0">
+            <div className={`frame frame-${profile.frame} h-28 w-28`}>
+              {profile.avatar ? (
+                <img src={profile.avatar} alt="" decoding="async" />
+              ) : (
+                <div className="grid h-full w-full place-items-center rounded-full bg-ink-800 font-display text-3xl font-black">
+                  {profile.display_name.slice(0, 1).toUpperCase()}
+                </div>
+              )}
+            </div>
+            <button
+              onClick={() => void pickImage("avatar")}
+              title="Загрузить с компьютера"
+              className="absolute -bottom-1 -right-1 grid h-9 w-9 place-items-center rounded-full bg-[rgb(var(--accent-rgb))] opacity-0 shadow-glow transition-opacity group-hover:opacity-100"
+            >
+              <ImageIcon size={15} />
+            </button>
           </div>
 
           <div className="min-w-0 flex-1">
-            <button
-              onClick={async () => {
-                const name = window.prompt("Имя", profile.display_name)
-                if (name) await apply("display_name", name)
-              }}
-              className="font-display text-4xl font-extrabold tracking-tight hover:opacity-80"
-            >
-              {profile.display_name}
-            </button>
+            <div className="flex items-center gap-2">
+              <h1 className="font-display text-4xl font-extrabold tracking-tight">
+                {profile.display_name}
+              </h1>
+              <button className="btn-icon" onClick={() => setDialog("name")} title="Изменить имя">
+                <Pencil size={14} />
+              </button>
+              {scUser && (
+                <button
+                  className="btn-icon"
+                  title="Подтянуть ник и аватар из SoundCloud"
+                  onClick={async () => {
+                    try {
+                      await syncFromSc(true)
+                      toast("Профиль синхронизирован с SoundCloud", "success")
+                    } catch (e) {
+                      toast((e as Error).message, "error")
+                    }
+                  }}
+                >
+                  <RefreshCw size={14} />
+                </button>
+              )}
+            </div>
             <p className="mt-1 text-sm text-[rgb(var(--accent-rgb))]">{profile.title}</p>
+
             <button
-              onClick={async () => {
-                const bio = window.prompt("О себе", profile.bio)
-                if (bio !== null) await apply("bio", bio)
-              }}
+              onClick={() => setDialog("bio")}
               className="mt-2 block max-w-xl text-left text-sm text-white/45 hover:text-white/70"
             >
               {profile.bio || "Добавить описание…"}
@@ -153,42 +258,88 @@ export function ProfileView() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            {[
-              { icon: Music4, label: "Треков", value: profile.tracks_played },
-              {
-                icon: Sparkles,
-                label: "Прослушано",
-                value: formatListenTime(Math.floor(profile.seconds_listened / 60)),
-              },
-              { icon: Flame, label: "Серия", value: `${profile.streak} дн.` },
-              { icon: Trophy, label: "Ачивки", value: `${unlocked}/${achievements.length}` },
-            ].map(({ icon: Icon, label, value }) => (
-              <div key={label} className="glass rounded-2xl px-4 py-3 text-center">
-                <Icon size={16} className="mx-auto text-[rgb(var(--accent-rgb))]" />
-                <p className="mt-1.5 font-display text-lg font-extrabold">{value}</p>
-                <p className="text-[10px] uppercase tracking-wider text-white/35">{label}</p>
-              </div>
-            ))}
+          {/* живая панель прослушивания */}
+          <div className="glass w-full max-w-sm rounded-2xl p-4">
+            <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-white/40">
+              <Timer size={13} className="text-[rgb(var(--accent-rgb))]" />
+              Всего прослушано
+              {isPlaying && (
+                <span className="ml-auto flex items-center gap-1 text-[10px] text-[rgb(var(--accent-rgb))]">
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[rgb(var(--accent-rgb))]" />
+                  LIVE
+                </span>
+              )}
+            </div>
+            <div className="mt-2 flex items-end gap-2 font-display tabular-nums">
+              {[
+                [live.hours, "ч"],
+                [live.minutes, "мин"],
+                [live.seconds, "сек"],
+              ].map(([value, unit]) => (
+                <div key={unit as string} className="flex items-end gap-1">
+                  <span className="text-3xl font-extrabold">
+                    {String(value).padStart(2, "0")}
+                  </span>
+                  <span className="pb-1 text-[11px] text-white/35">{unit as string}</span>
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+              {[
+                { icon: Music4, label: "Треков", value: profile.tracks_played },
+                { icon: Flame, label: "Серия", value: `${profile.streak} дн.` },
+                { icon: Trophy, label: "Ачивки", value: `${unlocked}/${achievements.length}` },
+              ].map(({ icon: Icon, label, value }) => (
+                <div key={label} className="rounded-xl bg-white/5 px-2 py-2">
+                  <Icon size={14} className="mx-auto text-[rgb(var(--accent-rgb))]" />
+                  <p className="mt-1 text-sm font-bold">{value}</p>
+                  <p className="text-[10px] uppercase tracking-wider text-white/35">{label}</p>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </header>
 
       <Tabs.Root defaultValue="custom">
         <Tabs.List className="mb-5 flex gap-1 rounded-2xl border border-white/5 bg-white/[0.03] p-1">
-          <Tabs.Trigger value="custom" className={tabCls("custom")}>
+          <Tabs.Trigger value="custom" className={tabCls}>
             Кастомизация
           </Tabs.Trigger>
-          <Tabs.Trigger value="achievements" className={tabCls("achievements")}>
+          <Tabs.Trigger value="achievements" className={tabCls}>
             Достижения
           </Tabs.Trigger>
-          <Tabs.Trigger value="stats" className={tabCls("stats")}>
+          <Tabs.Trigger value="stats" className={tabCls}>
             Статистика
           </Tabs.Trigger>
         </Tabs.List>
 
         {/* --------------------------------------------- кастомизация */}
         <Tabs.Content value="custom" className="space-y-8">
+          <section className="card space-y-3 p-5">
+            <h3 className="text-sm font-bold">Аватар, баннер и описание</h3>
+            <div className="flex flex-wrap gap-2">
+              <button className="btn glass" onClick={() => void pickImage("avatar")}>
+                <ImageIcon size={14} /> Аватар с ПК
+              </button>
+              <button className="btn glass" onClick={() => void pickImage("banner")}>
+                <ImageIcon size={14} /> Баннер с ПК
+              </button>
+              <button className="btn glass" onClick={() => setDialog("avatarUrl")}>
+                <Link2 size={14} /> Аватар по ссылке
+              </button>
+              <button className="btn glass" onClick={() => setDialog("bannerUrl")}>
+                <Link2 size={14} /> Баннер по ссылке
+              </button>
+              <button className="btn glass" onClick={() => setDialog("bio")}>
+                <Pencil size={14} /> Описание
+              </button>
+            </div>
+            <p className="text-[11px] text-white/35">
+              Файлы копируются в медиатеку приложения и остаются после перезапуска.
+            </p>
+          </section>
+
           <section className="space-y-3">
             <h3 className="section-title text-lg">Фоны</h3>
             <CosmeticGrid
@@ -202,6 +353,9 @@ export function ProfileView() {
                 </div>
               )}
             />
+            <p className="text-[11px] text-white/35">
+              Своя гифка, фото или видео — в Настройках → Кастомизация.
+            </p>
           </section>
 
           <section className="space-y-3">
@@ -214,7 +368,7 @@ export function ProfileView() {
               preview={(item) => (
                 <div className={`frame frame-${item.value} mx-auto h-16 w-16`}>
                   {profile.avatar ? (
-                    <img src={profile.avatar} alt="" />
+                    <img src={profile.avatar} alt="" decoding="async" />
                   ) : (
                     <div className="h-full w-full rounded-full bg-ink-800" />
                   )}
@@ -237,30 +391,9 @@ export function ProfileView() {
                 />
               )}
             />
-          </section>
-
-          <section className="card space-y-3 p-5">
-            <h3 className="text-sm font-bold">Аватар и баннер</h3>
-            <div className="flex flex-wrap gap-2">
-              <button
-                className="btn glass"
-                onClick={async () => {
-                  const url = window.prompt("Ссылка на аватар (URL картинки)", profile.avatar ?? "")
-                  if (url !== null) await apply("avatar", url)
-                }}
-              >
-                Изменить аватар
-              </button>
-              <button
-                className="btn glass"
-                onClick={async () => {
-                  const url = window.prompt("Ссылка на баннер", profile.banner ?? "")
-                  if (url !== null) await apply("banner", url)
-                }}
-              >
-                Изменить баннер
-              </button>
-            </div>
+            <p className="text-[11px] text-white/35">
+              Любой свой цвет можно задать в Настройках → Кастомизация.
+            </p>
           </section>
         </Tabs.Content>
 
@@ -345,7 +478,9 @@ export function ProfileView() {
                   <div key={a.artist_id} className="flex items-center gap-3">
                     <span className="w-4 text-xs text-white/30">{i + 1}</span>
                     <div className="h-9 w-9 overflow-hidden rounded-full bg-ink-800">
-                      {a.avatar && <img src={a.avatar} alt="" className="h-full w-full object-cover" />}
+                      {a.avatar && (
+                        <img src={a.avatar} alt="" className="h-full w-full object-cover" decoding="async" />
+                      )}
                     </div>
                     <span className="flex-1 truncate text-[13px]">{a.artist}</span>
                     <span className="text-[11px] text-white/35">{a.plays} просл.</span>
@@ -367,6 +502,57 @@ export function ProfileView() {
           </div>
         </Tabs.Content>
       </Tabs.Root>
+
+      {/* модалки вместо prompt() */}
+      <PromptDialog
+        open={dialog === "name"}
+        title="Имя профиля"
+        label="Как тебя называть"
+        defaultValue={profile.display_name}
+        maxLength={40}
+        onCancel={() => setDialog(null)}
+        onSubmit={async (value) => {
+          setDialog(null)
+          if (value) await apply("display_name", value)
+        }}
+      />
+      <PromptDialog
+        open={dialog === "bio"}
+        title="О себе"
+        description="Короткое описание для профиля"
+        defaultValue={profile.bio ?? ""}
+        multiline
+        maxLength={280}
+        onCancel={() => setDialog(null)}
+        onSubmit={async (value) => {
+          setDialog(null)
+          await apply("bio", value)
+        }}
+      />
+      <PromptDialog
+        open={dialog === "avatarUrl"}
+        title="Аватар по ссылке"
+        label="URL картинки"
+        placeholder="https://…"
+        defaultValue={profile.avatar ?? ""}
+        onCancel={() => setDialog(null)}
+        onSubmit={async (value) => {
+          setDialog(null)
+          await apply("avatar", value)
+        }}
+      />
+      <PromptDialog
+        open={dialog === "bannerUrl"}
+        title="Баннер по ссылке"
+        label="URL картинки"
+        placeholder="https://…"
+        defaultValue={profile.banner ?? ""}
+        onCancel={() => setDialog(null)}
+        onSubmit={async (value) => {
+          setDialog(null)
+          await apply("banner", value)
+        }}
+      />
     </div>
   )
 }
