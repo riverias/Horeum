@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react"
+import { useEffect, useMemo, useRef } from "react"
 import { AnimatePresence, motion } from "framer-motion"
 import { RefreshCw, X } from "lucide-react"
 import { useLyrics } from "@/hooks/useLyrics"
@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils"
 export function LyricsPanel() {
   const open = useUiStore((s) => s.lyricsOpen)
   const setOpen = useUiStore((s) => s.setLyricsOpen)
+  const karaoke = useUiStore((s) => s.karaoke)
   const track = usePlayerStore((s) => s.current)
   const positionMs = usePlayerStore((s) => s.positionMs)
   const seek = usePlayerStore((s) => s.seek)
@@ -18,6 +19,18 @@ export function LyricsPanel() {
   useEffect(() => {
     activeRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })
   }, [activeIndex])
+
+  /** Прогресс внутри активной строки — для караоке-заливки. */
+  const lineProgress = useMemo(() => {
+    const lines = lyrics?.synced
+    if (!lines || activeIndex < 0 || activeIndex >= lines.length) return 0
+    const start = lines[activeIndex].time * 1000
+    const end = lines[activeIndex + 1]?.time
+      ? lines[activeIndex + 1].time * 1000
+      : start + 4000
+    const span = Math.max(300, end - start)
+    return Math.max(0, Math.min(1, (positionMs - start) / span))
+  }, [lyrics, activeIndex, positionMs])
 
   return (
     <AnimatePresence>
@@ -70,19 +83,30 @@ export function LyricsPanel() {
 
             {!loading && lyrics && lyrics.synced.length > 0 && (
               <div className="space-y-1">
-                {lyrics.synced.map((line, i) => (
-                  <button
-                    key={`${line.time}-${i}`}
-                    ref={i === activeIndex ? activeRef : undefined}
-                    onClick={() => seek(line.time * 1000)}
-                    className={cn(
-                      "lyric-line block w-full text-left",
-                      i === activeIndex && "lyric-active",
-                    )}
-                  >
-                    {line.text || "♪"}
-                  </button>
-                ))}
+                {lyrics.synced.map((line, i) => {
+                  const active = i === activeIndex
+                  const passed = i < activeIndex
+                  return (
+                    <button
+                      key={`${line.time}-${i}`}
+                      ref={active ? activeRef : undefined}
+                      onClick={() => seek(line.time * 1000)}
+                      style={
+                        active && karaoke
+                          ? ({ "--p": `${lineProgress * 100}%` } as React.CSSProperties)
+                          : undefined
+                      }
+                      className={cn(
+                        "lyric-line block w-full text-left",
+                        active && "lyric-active",
+                        active && karaoke && "lyric-karaoke",
+                        passed && "lyric-passed",
+                      )}
+                    >
+                      {line.text || "♪"}
+                    </button>
+                  )
+                })}
               </div>
             )}
 
