@@ -3,8 +3,16 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self' ipc: http://ipc.localhost; img-src 'self' data: https: asset: http://asset.localhost; media-src 'self' https: blob:; connect-src 'self' ipc: http://ipc.localhost https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self'" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self' ipc: http://ipc.localhost; img-src 'self' data: blob: https: asset: http://asset.localhost http://127.0.0.1:* http://localhost:*; media-src 'self' https: blob: http://127.0.0.1:* http://localhost:*; connect-src 'self' ipc: http://ipc.localhost https: http://127.0.0.1:* http://localhost:* ws://127.0.0.1:* ws://localhost:*; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self'"
+    />
     <title>Horeum</title>
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%230b0b12'/%3E%3Ctext x='32' y='44' font-family='Arial,Helvetica,sans-serif' font-size='38' font-weight='bold' fill='%23ff5500' text-anchor='middle'%3EH%3C/text%3E%3C/svg%3E"
+    />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
