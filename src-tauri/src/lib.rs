@@ -5,6 +5,7 @@ pub mod commands;
 pub mod commands_ext;
 pub mod db;
 pub mod downloads;
+pub mod dpi;
 pub mod error;
 pub mod lyrics;
 pub mod media;
@@ -28,6 +29,33 @@ pub struct AppState {
     pub lyrics: Arc<LyricsClient>,
 }
 
+/// Читает булеву настройку, сохранённую фронтом через `set_setting` (JSON-строка).
+fn setting_bool(db: &Db, key: &str, default: bool) -> bool {
+    match db.get_setting(key) {
+        Ok(Some(raw)) => {
+            let v = raw.trim().trim_matches('"').to_ascii_lowercase();
+            match v.as_str() {
+                "true" | "1" | "on" | "yes" => true,
+                "false" | "0" | "off" | "no" => false,
+                _ => default,
+            }
+        }
+        _ => default,
+    }
+}
+
+fn setting_num(db: &Db, key: &str, default: u64) -> u64 {
+    match db.get_setting(key) {
+        Ok(Some(raw)) => raw
+            .trim()
+            .trim_matches('"')
+            .parse::<f64>()
+            .map(|v| v.max(0.0) as u64)
+            .unwrap_or(default),
+        _ => default,
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -39,6 +67,14 @@ pub fn run() {
                 .app_data_dir()
                 .unwrap_or_else(|_| std::path::PathBuf::from("."));
             let db = Arc::new(Db::open(&dir.join("horeum.db")).expect("failed to open database"));
+
+            // Обход DPI для РФ — поднимаем ДО создания HTTP-клиентов,
+            // чтобы reqwest подхватил локальный прокси из окружения.
+            let dpi_enabled = setting_bool(&db, "dpi_bypass", true);
+            let dpi_split = setting_num(&db, "dpi_split_pos", 2) as usize;
+            let dpi_delay = setting_num(&db, "dpi_delay_ms", 12);
+            dpi::start(dpi_enabled, dpi_split, dpi_delay);
+
             let sc = Arc::new(SoundCloud::new());
 
             // восстанавливаем сохранённую сессию SoundCloud
@@ -139,6 +175,9 @@ pub fn run() {
             commands_ext::sc_login_window,
             commands_ext::close_login_window,
             commands_ext::sc_login_browser,
+            // ─── обход блокировок ───
+            dpi::dpi_status,
+            dpi::dpi_set,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Horeum");
