@@ -1,4 +1,5 @@
 import { create } from "zustand"
+import { api } from "@/lib/api"
 import type { ViewId } from "@/lib/types"
 
 export interface Toast {
@@ -20,6 +21,9 @@ interface UiState {
   discovery: number
   visualizer: "bars" | "wave" | "radial" | "off"
   dynamicTheme: boolean
+  downloadDir: string
+  karaoke: boolean
+  youtubeEnabled: boolean
 
   navigate: (view: ViewId, param?: number | string | null) => void
   toast: (message: string, kind?: Toast["kind"]) => void
@@ -33,9 +37,16 @@ interface UiState {
   setDiscovery: (v: number) => void
   setVisualizer: (v: UiState["visualizer"]) => void
   setDynamicTheme: (v: boolean) => void
+  setDownloadDir: (dir: string) => void
+  setKaraoke: (v: boolean) => void
+  setYoutubeEnabled: (v: boolean) => void
 }
 
 let toastId = 0
+
+function save(key: string, value: unknown) {
+  void api.setSetting(key, value).catch(() => {})
+}
 
 export const useUiStore = create<UiState>((set, get) => ({
   view: "home",
@@ -50,6 +61,9 @@ export const useUiStore = create<UiState>((set, get) => ({
   discovery: 0.55,
   visualizer: "bars",
   dynamicTheme: true,
+  downloadDir: "",
+  karaoke: true,
+  youtubeEnabled: true,
 
   navigate: (view, param = null) => set({ view, viewParam: param }),
 
@@ -66,7 +80,28 @@ export const useUiStore = create<UiState>((set, get) => ({
   setFullscreen: (fullscreen) => set({ fullscreen }),
   setCommandOpen: (commandOpen) => set({ commandOpen }),
   setWaveLoading: (waveLoading) => set({ waveLoading }),
-  setDiscovery: (discovery) => set({ discovery }),
-  setVisualizer: (visualizer) => set({ visualizer }),
-  setDynamicTheme: (dynamicTheme) => set({ dynamicTheme }),
+  setDiscovery: (discovery) => {
+    set({ discovery })
+    save("discovery", discovery)
+  },
+  setVisualizer: (visualizer) => {
+    set({ visualizer })
+    save("visualizer", visualizer)
+  },
+  setDynamicTheme: (dynamicTheme) => {
+    set({ dynamicTheme })
+    save("dynamic_theme", dynamicTheme)
+  },
+  setDownloadDir: (downloadDir) => {
+    set({ downloadDir })
+    save("downloads_dir", downloadDir)
+  },
+  setKaraoke: (karaoke) => {
+    set({ karaoke })
+    save("karaoke", karaoke)
+  },
+  setYoutubeEnabled: (youtubeEnabled) => {
+    set({ youtubeEnabled })
+    save("youtube_enabled", youtubeEnabled)
+  },
 }))

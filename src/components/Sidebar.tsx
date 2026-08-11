@@ -1,7 +1,9 @@
+import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import {
   BarChart3,
   Clock3,
+  Download,
   Heart,
   Home,
   ListMusic,
@@ -10,22 +12,23 @@ import {
   Search,
   Settings,
   Sparkles,
-  User,
 } from "lucide-react"
 import { api } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { useUiStore } from "@/store/ui"
 import { useProfileStore } from "@/store/profile"
+import { PromptDialog } from "@/components/Dialog"
 import type { ViewId } from "@/lib/types"
 
 const NAV: Array<{ id: ViewId; label: string; icon: typeof Home }> = [
   { id: "home", label: "Главная", icon: Home },
   { id: "search", label: "Поиск", icon: Search },
-  { id: "wave", label: "Волна", icon: Radio },
+  { id: "wave", label: "Моя волна", icon: Radio },
   { id: "moods", label: "Настроения", icon: Sparkles },
   { id: "charts", label: "Чарты", icon: BarChart3 },
   { id: "library", label: "Любимое", icon: Heart },
   { id: "history", label: "История", icon: Clock3 },
+  { id: "downloads", label: "Загрузки", icon: Download },
 ]
 
 export function Sidebar() {
@@ -34,17 +37,18 @@ export function Sidebar() {
   const navigate = useUiStore((s) => s.navigate)
   const toast = useUiStore((s) => s.toast)
   const profile = useProfileStore((s) => s.profile)
+  const [createOpen, setCreateOpen] = useState(false)
 
   const { data: playlists = [], refetch } = useQuery({
     queryKey: ["playlists"],
     queryFn: api.playlists,
   })
 
-  const createPlaylist = async () => {
-    const name = window.prompt("Название плейлиста", "Новый плейлист")
+  const createPlaylist = async (name: string) => {
     if (!name) return
     try {
       const pl = await api.createPlaylist(name)
+      setCreateOpen(false)
       await refetch()
       navigate("playlist", pl.id)
       toast("Плейлист создан", "success")
@@ -88,7 +92,11 @@ export function Sidebar() {
         <span className="text-[11px] font-bold uppercase tracking-widest text-white/35">
           Плейлисты
         </span>
-        <button className="btn-icon h-6 w-6" onClick={createPlaylist} title="Создать плейлист">
+        <button
+          className="btn-icon h-6 w-6"
+          onClick={() => setCreateOpen(true)}
+          title="Создать плейлист"
+        >
           <Plus size={14} />
         </button>
       </div>
@@ -96,7 +104,7 @@ export function Sidebar() {
       <div className="scroll-area min-h-0 flex-1 px-3 pb-3">
         {playlists.length === 0 && (
           <p className="px-2 py-3 text-xs leading-relaxed text-white/30">
-            Пока пусто. Создай первый плейлист — или импортируй ссылку с SoundCloud в настройках.
+            Пока пусто. Создай первый плейлист — или импортируй ссылку в настройках.
           </p>
         )}
         {playlists.map((pl) => (
@@ -124,7 +132,7 @@ export function Sidebar() {
         >
           <div className={`frame frame-${profile?.frame ?? "none"} h-10 w-10 shrink-0`}>
             {profile?.avatar ? (
-              <img src={profile.avatar} alt="" />
+              <img src={profile.avatar} alt="" decoding="async" />
             ) : (
               <div className="grid h-full w-full place-items-center rounded-full bg-ink-800 text-xs font-bold">
                 {(profile?.display_name ?? "H").slice(0, 1).toUpperCase()}
@@ -156,6 +164,18 @@ export function Sidebar() {
           <Settings size={16} /> Настройки
         </button>
       </div>
+
+      <PromptDialog
+        open={createOpen}
+        title="Новый плейлист"
+        description="Как его назовём?"
+        label="Название"
+        defaultValue="Новый плейлист"
+        maxLength={60}
+        confirmText="Создать"
+        onCancel={() => setCreateOpen(false)}
+        onSubmit={(v) => void createPlaylist(v)}
+      />
     </aside>
   )
 }

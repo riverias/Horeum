@@ -199,4 +199,8 @@ export type ViewId =
   | "playlist"
   | "artist"
   | "profile"
+  | "downloads"
   | "settings"
+
+// Расширенные типы (медиа, загрузки, импорт) живут в отдельном файле.
+export * from "./typesExt"

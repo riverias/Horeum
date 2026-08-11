@@ -7,6 +7,12 @@
     --accent: #8b5cf6;
     --accent-rgb: 139 92 246;
     --bg-0: #06060a;
+    --bg-blur: 0px;
+    --bg-dim: 0.35;
+    --bg-sat: 100%;
+    --bg-scale: 1.05;
+    --glass-alpha: 0.6;
+    --radius-ui: 16px;
   }
 
   * {
@@ -355,126 +361,43 @@
 }
 
 /* ============================================================
-   РАМКИ АВАТАРА (unlockable frames)
+   ПОЛЬЗОВАТЕЛЬСКИЙ ФОН: эффекты поверх фото/гиф/видео
    ============================================================ */
-.frame {
-  position: relative;
-  border-radius: 999px;
-  padding: 4px;
-  background: rgba(255, 255, 255, 0.08);
+.bg-grain {
+  pointer-events: none;
+  opacity: 0.16;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='0.55'/%3E%3C/svg%3E");
+  animation: grainShift 1.2s steps(3) infinite;
 }
-.frame > * {
-  border-radius: 999px;
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.frame-none {
-  background: rgba(255, 255, 255, 0.1);
+@keyframes grainShift {
+  0% { transform: translate(0, 0); }
+  33% { transform: translate(-2%, 1%); }
+  66% { transform: translate(1%, -2%); }
+  100% { transform: translate(0, 0); }
 }
 
-.frame-neon {
-  background: linear-gradient(135deg, #22d3ee, #a855f7, #22d3ee);
-  box-shadow: 0 0 22px rgba(168, 85, 247, 0.65), inset 0 0 12px rgba(34, 211, 238, 0.5);
+.bg-vignette {
+  pointer-events: none;
+  background: radial-gradient(120% 100% at 50% 45%, transparent 45%, rgba(0, 0, 0, 0.75) 100%);
 }
 
-.frame-holo {
-  background: conic-gradient(from 0deg, #ff2e88, #ffd166, #22d3ee, #a855f7, #ff2e88);
-  animation: spin 6s linear infinite;
+/* иконки красятся в акцентный цвет, если включено в настройках */
+html[data-icon-accent="on"] svg {
+  color: var(--accent);
 }
-.frame-holo > * {
-  animation: spinBack 6s linear infinite;
-}
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-@keyframes spinBack {
-  to {
-    transform: rotate(-360deg);
-  }
+html[data-icon-accent="on"] .btn-accent svg,
+html[data-icon-accent="on"] button:hover svg {
+  color: inherit;
 }
 
-.frame-pulse {
-  background: linear-gradient(135deg, rgb(var(--accent-rgb)), rgba(255, 255, 255, 0.2));
-  animation: pulseRing 2.2s infinite;
-}
-@keyframes pulseRing {
-  0% {
-    box-shadow: 0 0 0 0 rgb(var(--accent-rgb) / 0.65);
-  }
-  70% {
-    box-shadow: 0 0 0 16px rgb(var(--accent-rgb) / 0);
-  }
-  100% {
-    box-shadow: 0 0 0 0 rgb(var(--accent-rgb) / 0);
-  }
-}
-
-.frame-flame {
-  background: linear-gradient(0deg, #f59e0b, #ef4444, #fbbf24);
-  background-size: 100% 300%;
-  animation: flameRun 2.4s ease-in-out infinite;
-  box-shadow: 0 0 26px rgba(239, 68, 68, 0.55);
-}
-@keyframes flameRun {
-  0%,
-  100% {
-    background-position: 50% 0%;
-  }
-  50% {
-    background-position: 50% 100%;
-  }
-}
-
-.frame-glitch {
-  background: linear-gradient(135deg, #22d3ee, #f43f5e);
-  animation: glitchShift 1.6s steps(2, end) infinite;
-}
-@keyframes glitchShift {
-  0%,
-  100% {
-    filter: hue-rotate(0deg);
-    transform: translate(0, 0);
-  }
-  40% {
-    filter: hue-rotate(60deg);
-    transform: translate(1px, -1px);
-  }
-  70% {
-    filter: hue-rotate(-45deg);
-    transform: translate(-1px, 1px);
-  }
-}
-
-.frame-prism {
-  background: conic-gradient(
-    from 180deg,
-    #ef4444,
-    #f59e0b,
-    #eab308,
-    #22c55e,
-    #06b6d4,
-    #3b82f6,
-    #8b5cf6,
-    #ef4444
-  );
-  filter: saturate(1.2);
-  animation: spin 9s linear infinite;
-}
-
-.frame-mythic {
-  background: conic-gradient(from 0deg, #fde68a, #f59e0b, #fff7cd, #f59e0b, #fde68a);
-  box-shadow:
-    0 0 26px rgba(245, 158, 11, 0.7),
-    0 0 60px rgba(253, 230, 138, 0.35);
-  animation: spin 8s linear infinite;
-}
-.frame-mythic > * {
-  animation: spinBack 8s linear infinite;
+/* полное отключение анимаций */
+html[data-animations="off"] *,
+html[data-animations="off"] *::before,
+html[data-animations="off"] *::after {
+  animation-duration: 0.001s !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001s !important;
 }
 
 /* равномерное появление списков */
@@ -496,14 +419,38 @@
   }
 }
 
-/* строка текста песни */
+/* ============================================================
+   ТЕКСТ ПЕСНИ — караоке-заливка активной строки
+   ============================================================ */
 .lyric-line {
   @apply cursor-pointer py-2 text-xl font-semibold leading-snug text-white/25 transition-all duration-300;
+  transform-origin: left center;
 }
 .lyric-line:hover {
   @apply text-white/55;
 }
+.lyric-passed {
+  @apply text-white/40;
+}
 .lyric-active {
   @apply scale-[1.03] text-white;
   text-shadow: 0 0 28px rgb(var(--accent-rgb) / 0.65);
+}
+
+/* построчная заливка: --p выставляется из React по прогрессу трека */
+.lyric-karaoke {
+  --p: 0%;
+  color: transparent;
+  text-shadow: none;
+  background-image: linear-gradient(
+    90deg,
+    #fff 0%,
+    #fff var(--p),
+    rgba(255, 255, 255, 0.32) var(--p),
+    rgba(255, 255, 255, 0.32) 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  filter: drop-shadow(0 0 18px rgb(var(--accent-rgb) / 0.45));
+  transition: background-image 0.12s linear, transform 0.3s ease;
 }

@@ -3,6 +3,7 @@ import * as ContextMenu from "@radix-ui/react-context-menu"
 import { useQuery } from "@tanstack/react-query"
 import {
   Ban,
+  Download,
   Heart,
   ListPlus,
   ListEnd,
@@ -36,6 +37,7 @@ function TrackRowBase({ track, index, onPlay, onRemove }: Props) {
   const playNext = usePlayerStore((s) => s.playNextInQueue)
   const appendToQueue = usePlayerStore((s) => s.appendToQueue)
   const startWave = usePlayerStore((s) => s.startWave)
+  const downloadTrack = usePlayerStore((s) => s.downloadTrack)
   const likedIds = useProfileStore((s) => s.likedIds)
   const toggleLikeLocal = useProfileStore((s) => s.toggleLikeLocal)
   const navigate = useUiStore((s) => s.navigate)
@@ -103,7 +105,7 @@ function TrackRowBase({ track, index, onPlay, onRemove }: Props) {
               <img
                 src={track.artwork}
                 alt=""
-                loading="lazy"
+                decoding="async"
                 className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
               />
             ) : (
@@ -137,6 +139,16 @@ function TrackRowBase({ track, index, onPlay, onRemove }: Props) {
             <span className="hidden text-[11px] tabular-nums text-white/30 xl:inline">
               {formatCount(track.playback_count)} просл.
             </span>
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                void downloadTrack(track)
+              }}
+              title="Скачать"
+              className="btn-icon h-8 w-8 opacity-0 transition-opacity group-hover:opacity-100"
+            >
+              <Download size={15} />
+            </button>
             <button
               onClick={like}
               className={cn(
@@ -173,6 +185,9 @@ function TrackRowBase({ track, index, onPlay, onRemove }: Props) {
 
           <ContextMenu.Separator className="my-1.5 h-px bg-white/10" />
 
+          <ContextMenu.Item className={item} onSelect={() => void downloadTrack(track)}>
+            <Download size={14} /> Скачать трек
+          </ContextMenu.Item>
           <ContextMenu.Item className={item} onSelect={like}>
             <Heart size={14} /> {liked ? "Убрать из любимого" : "В любимое"}
           </ContextMenu.Item>
@@ -216,7 +231,7 @@ function TrackRowBase({ track, index, onPlay, onRemove }: Props) {
             className={item}
             onSelect={() => void openUrl(track.permalink_url)}
           >
-            <ExternalLink size={14} /> Открыть на SoundCloud
+            <ExternalLink size={14} /> Открыть оригинал
           </ContextMenu.Item>
 
           <ContextMenu.Separator className="my-1.5 h-px bg-white/10" />

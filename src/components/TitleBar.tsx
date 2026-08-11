@@ -6,8 +6,22 @@ import { usePlayerStore } from "@/store/player"
 export function TitleBar() {
   const navigate = useUiStore((s) => s.navigate)
   const setCommandOpen = useUiStore((s) => s.setCommandOpen)
+  const toast = useUiStore((s) => s.toast)
   const startWave = usePlayerStore((s) => s.startWave)
   const current = usePlayerStore((s) => s.current)
+
+  /**
+   * Оконные команды могут быть недоступны в старой сборке
+   * (core:window:allow-toggle-maximize и т.п.) — не роняем промисы в консоль.
+   */
+  const safe = async (action: () => Promise<unknown>, label: string) => {
+    try {
+      await action()
+    } catch (e) {
+      console.warn(`[window] ${label}:`, e)
+      toast(`Окно: ${label} недоступно. Пересоберите приложение (npm run tauri dev).`, "error")
+    }
+  }
 
   const win = () => getCurrentWindow()
 
@@ -30,7 +44,7 @@ export function TitleBar() {
           className="btn h-7 px-2.5 text-xs"
           onClick={() => void startWave(current?.id)}
         >
-          <Radio size={13} /> Волна
+          <Radio size={13} /> Моя волна
         </button>
         <button className="btn h-7 px-2.5 text-xs" onClick={() => setCommandOpen(true)}>
           <Command size={13} /> ⌘K
@@ -40,18 +54,21 @@ export function TitleBar() {
       <div className="drag-region flex-1" />
 
       <div className="no-drag flex items-center">
-        <button className="btn-icon h-8 w-10 rounded-md" onClick={() => void win().minimize()}>
+        <button
+          className="btn-icon h-8 w-10 rounded-md"
+          onClick={() => void safe(() => win().minimize(), "свернуть")}
+        >
           <Minus size={15} />
         </button>
         <button
           className="btn-icon h-8 w-10 rounded-md"
-          onClick={() => void win().toggleMaximize()}
+          onClick={() => void safe(() => win().toggleMaximize(), "развернуть")}
         >
           <Square size={12} />
         </button>
         <button
           className="btn-icon h-8 w-10 rounded-md hover:bg-red-500/80 hover:text-white"
-          onClick={() => void win().close()}
+          onClick={() => void safe(() => win().close(), "закрыть")}
         >
           <X size={15} />
         </button>

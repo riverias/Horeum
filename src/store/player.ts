@@ -1,6 +1,7 @@
 import { create } from "zustand"
 import { engine } from "@/audio/engine"
 import { api } from "@/lib/api"
+import { apix, isYouTube } from "@/lib/apiExt"
 import { shuffleArray, uniqueById } from "@/lib/utils"
 import type { PlaySource, RepeatMode, Track } from "@/lib/types"
 import { useUiStore } from "./ui"
@@ -41,11 +42,26 @@ interface PlayerState {
   toggleShuffle: () => void
   startWave: (seedTrackId?: number) => Promise<void>
   setSleepTimer: (minutes: number | null) => void
+  downloadTrack: (track?: Track | null) => Promise<void>
+  restoreSession: () => Promise<void>
   _bootstrap: () => void
 }
 
 let bootstrapped = false
 let extendingWave = false
+let sessionTimer: ReturnType<typeof setTimeout> | null = null
+
+/** Треки YouTube приходят с отрицательным id и не имеют transcodings SoundCloud. */
+function playable(t: Track): boolean {
+  return Boolean(t.has_transcodings) || isYouTube(t.id)
+}
+
+/** Ссылка на поток: SoundCloud или YouTube — зависит от источника трека. */
+async function streamFor(track: Track) {
+  return isYouTube(track.id)
+    ? await apix.ytStreamUrl(track.id)
+    : await api.streamUrl(track.id)
+}
 
 export const usePlayerStore = create<PlayerState>((set, get) => ({
   queue: [],
@@ -67,7 +83,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   sleepTimerAt: null,
 
   async playQueue(tracks, startIndex = 0, source = "library") {
-    const clean = uniqueById(tracks.filter((t) => t.has_transcodings))
+    const clean = uniqueById(tracks.filter(playable))
     if (!clean.length) {
       useUiStore.getState().toast("Нет воспроизводимых треков", "error")
       return
@@ -100,6 +116,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   appendToQueue(tracks) {
     set({ queue: uniqueById([...get().queue, ...tracks]) })
+    saveSession(get)
   },
 
   removeFromQueue(i) {
@@ -109,6 +126,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       queue: queue.filter((_, idx) => idx !== i),
       index: i < index ? index - 1 : index,
     })
+    saveSession(get)
   },
 
   toggle() {
@@ -179,6 +197,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     const order: RepeatMode[] = ["off", "all", "one"]
     const repeat = order[(order.indexOf(get().repeat) + 1) % order.length]
     set({ repeat })
+    void api.setSetting("repeat", repeat).catch(() => {})
   },
 
   toggleShuffle() {
@@ -193,6 +212,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       const newIndex = current ? Math.max(0, restored.findIndex((t) => t.id === current.id)) : 0
       set({ shuffle, queue: restored, index: newIndex })
     }
+    void api.setSetting("shuffle", shuffle).catch(() => {})
   },
 
   async startWave(seedTrackId) {
@@ -211,6 +231,46 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   setSleepTimer(minutes) {
     set({ sleepTimerAt: minutes ? Date.now() + minutes * 60_000 : null })
+  },
+
+  /** Скачивание трека в папку загрузок (MP3/M4A из потока). */
+  async downloadTrack(track) {
+    const ui = useUiStore.getState()
+    const t = track ?? get().current
+    if (!t) return
+    try {
+      ui.toast(`Скачиваю: ${t.title}`, "info")
+      const stream = await streamFor(t)
+      const dir = useUiStore.getState().downloadDir || null
+      await apix.downloadTrack(t, stream, dir)
+    } catch (e) {
+      ui.toast(`Загрузка: ${(e as Error).message}`, "error")
+    }
+  },
+
+  /** Возвращает очередь и позицию после перезапуска приложения. */
+  async restoreSession() {
+    try {
+      const settings = await api.getSettings()
+      const raw = settings.session
+      const data = typeof raw === "string" ? JSON.parse(raw) : raw
+      if (!data || !Array.isArray(data.queue) || !data.queue.length) return
+      const queue: Track[] = data.queue
+      const index = Math.min(Math.max(0, Number(data.index) || 0), queue.length - 1)
+      set({
+        queue,
+        originalQueue: queue,
+        index,
+        current: queue[index] ?? null,
+        source: (data.source as PlaySource) ?? "library",
+        waveMode: Boolean(data.waveMode),
+        positionMs: Number(data.positionMs) || 0,
+        durationMs: queue[index]?.duration ?? 0,
+      })
+      await loadCurrent(set, get, false, Number(data.positionMs) || 0)
+    } catch {
+      /* нечего восстанавливать */
+    }
   },
 
   _bootstrap() {
@@ -240,29 +300,61 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     setInterval(() => {
       if (get().playing) set({ listenedSeconds: get().listenedSeconds + 1 })
     }, 1000)
+
+    // периодически сохраняем сессию, чтобы всё вернулось после выхода
+    setInterval(() => {
+      if (get().current) saveSession(get, true)
+    }, 15_000)
+    window.addEventListener("beforeunload", () => saveSession(get, true))
   },
 }))
 
 async function loadCurrent(
   set: (partial: Partial<PlayerState>) => void,
   get: () => PlayerState,
+  autoplay = true,
+  seekMs = 0,
 ) {
   const { queue, index } = get()
   const track = queue[index]
   if (!track) return
-  set({ current: track, loading: true, positionMs: 0, listenedSeconds: 0 })
+  set({ current: track, loading: true, positionMs: seekMs, listenedSeconds: 0 })
   try {
-    const stream = await api.streamUrl(track.id)
-    await engine.load(stream, true)
+    const stream = await streamFor(track)
+    await engine.load(stream, autoplay)
+    if (seekMs > 0) engine.seek(seekMs)
+    saveSession(get, true)
   } catch (e) {
     useUiStore.getState().toast(`${track.title}: ${(e as Error).message}`, "error")
     set({ loading: false })
     // переходим к следующему, если трек недоступен
-    if (index + 1 < queue.length) {
+    if (autoplay && index + 1 < queue.length) {
       set({ index: index + 1 })
       await loadCurrent(set, get)
     }
   }
+}
+
+/** Сохраняет очередь/позицию в настройки (с дебаунсом). */
+function saveSession(get: () => PlayerState, immediate = false) {
+  const write = () => {
+    const s = get()
+    if (!s.current) return
+    const payload = {
+      queue: s.queue.slice(0, 200),
+      index: s.index,
+      positionMs: s.positionMs,
+      source: s.source,
+      waveMode: s.waveMode,
+    }
+    void api.setSetting("session", JSON.stringify(payload)).catch(() => {})
+  }
+  if (immediate) {
+    write()
+    return
+  }
+  if (sessionTimer) clearTimeout(sessionTimer)
+  sessionTimer = setTimeout(write, 1000)
 }
 
 /** Сохраняет прослушивание и начисляет XP. */
@@ -281,7 +373,7 @@ async function flushPlay(get: () => PlayerState, set: (p: Partial<PlayerState>) 
   set({ listenedSeconds: 0 })
 }
 
-/** Догрузка «Волны», чтобы очередь никогда не заканчивалась. */
+/** Догрузка «Моей волны», чтобы очередь никогда не заканчивалась. */
 async function extendWave(
   set: (p: Partial<PlayerState>) => void,
   get: () => PlayerState,
@@ -289,9 +381,17 @@ async function extendWave(
   if (extendingWave) return
   extendingWave = true
   try {
-    const seed = get().current?.id
-    const more = await api.buildWave(seed, 40, useUiStore.getState().discovery)
-    set({ queue: uniqueById([...get().queue, ...more]) })
+    const current = get().current
+    const seed = current?.id
+    let more: Track[] = []
+    if (current && isYouTube(current.id)) {
+      more = (await apix.ytRelated(current.id, 30)) as Track[]
+    } else {
+      more = await api.buildWave(seed, 40, useUiStore.getState().discovery)
+    }
+    const known = new Set(get().queue.map((t) => t.id))
+    const fresh = more.filter((t) => !known.has(t.id))
+    set({ queue: uniqueById([...get().queue, ...fresh]) })
   } catch {
     /* ignore */
   } finally {
