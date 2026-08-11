@@ -38,10 +38,11 @@ function isBenignPlayError(e: unknown): boolean {
  * Аудиодвижок Horeum.
  *
  * HTMLAudioElement → MediaElementSource → [10x BiquadFilter] → Gain → Analyser → Destination
- * HLS-потоки прокидываются через hls.js (местами SoundCloud отдаёт только m3u8).
+ * HLS-потоки прокидываются через hls.js.
  *
- * Все загрузки пронумерованы (`loadSeq`): если пока грузился трек A пользователь
- * включил трек B, старый play() просто тихо отменяется без красного тоста.
+ * Загрузки пронумерованы (`loadSeq`): если пока грузился трек A пользователь включил B,
+ * старый play() тихо отменяется. Громкость разделена на базовую (пользовательскую)
+ * и множитель фейда, чтобы кроссфейд не сбивал настройки громкости.
  */
 export class AudioEngine {
   readonly audio: HTMLAudioElement
@@ -53,6 +54,10 @@ export class AudioEngine {
   private hls: Hls | null = null
   private loadSeq = 0
   private pendingPlay: Promise<void> | null = null
+  private baseVolume = 0.8
+  private fadeFactor = 1
+  private fadeTimer: ReturnType<typeof setInterval> | null = null
+  private prefetchAbort: AbortController | null = null
   private listeners: { [K in keyof EngineEvents]: Set<EngineEvents[K]> } = {
     time: new Set(),
     ended: new Set(),
@@ -79,7 +84,6 @@ export class AudioEngine {
     })
     this.audio.addEventListener("pause", () => this.emit("playing", false))
     this.audio.addEventListener("error", () => {
-      // пустой src или отмена загрузки — это наша же смена трека, молчим
       const code = this.audio.error?.code
       if (!this.audio.currentSrc || code === MediaError.MEDIA_ERR_ABORTED) return
       this.emit("error", "Не удалось воспроизвести трек")
@@ -125,7 +129,6 @@ export class AudioEngine {
       this.gain.connect(this.analyser)
       this.analyser.connect(this.ctx.destination)
     } catch (e) {
-      // CORS / недоступный WebAudio — играем без эффектов
       this.ctx = null
       this.analyser = null
       console.warn("[horeum] WebAudio graph disabled:", e)
@@ -146,17 +149,15 @@ export class AudioEngine {
     values.forEach((v, i) => this.setEqBand(i, v))
   }
 
-  /** Номер последней загрузки — сторонний код может проверить актуальность. */
   get generation(): number {
     return this.loadSeq
   }
 
   // ------------------------------------------------------------ playback
-  async load(stream: StreamInfo, autoplay = true) {
+  async load(stream: StreamInfo, autoplay = true, fadeInMs = 0) {
     const seq = ++this.loadSeq
+    this.stopFade()
 
-    // гасим текущее воспроизведение ДО подмены src, иначе браузер ругается
-    // «The play() request was interrupted by a new load request»
     try {
       this.audio.pause()
     } catch {
@@ -169,6 +170,10 @@ export class AudioEngine {
 
     this.detachHls()
     this.emit("loading", true)
+
+    // если будет фейд-ин — начинаем с тишины
+    this.fadeFactor = fadeInMs > 0 ? 0 : 1
+    this.applyVolume()
 
     const isHls = stream.protocol === "hls" || stream.url.includes(".m3u8")
     if (isHls && Hls.isSupported()) {
@@ -186,13 +191,12 @@ export class AudioEngine {
     }
 
     if (seq !== this.loadSeq) return
-    if (autoplay) await this.play(seq)
+    if (autoplay) {
+      await this.play(seq)
+      if (seq === this.loadSeq && fadeInMs > 0) this.fadeTo(1, fadeInMs)
+    }
   }
 
-  /**
-   * Запуск воспроизведения. Если передан `seq`, вызов отменяется,
-   * когда успела начаться более свежая загрузка.
-   */
   async play(seq?: number) {
     if (seq !== undefined && seq !== this.loadSeq) return
     this.ensureGraph()
@@ -234,8 +238,14 @@ export class AudioEngine {
     }
   }
 
+  // ------------------------------------------------------------- volume
+  private applyVolume() {
+    this.audio.volume = Math.max(0, Math.min(1, this.baseVolume * this.fadeFactor))
+  }
+
   setVolume(value: number) {
-    this.audio.volume = Math.max(0, Math.min(1, value))
+    this.baseVolume = Math.max(0, Math.min(1, value))
+    this.applyVolume()
   }
 
   setMuted(muted: boolean) {
@@ -246,16 +256,74 @@ export class AudioEngine {
     this.audio.playbackRate = Math.max(0.5, Math.min(2.5, rate))
   }
 
-  /** Плавное затухание перед сменой трека (простой кроссфейд). */
-  async fadeOut(ms: number) {
-    if (ms <= 0) return
-    const start = this.audio.volume
-    const steps = 16
-    for (let i = 1; i <= steps; i++) {
-      this.audio.volume = start * (1 - i / steps)
-      await new Promise((r) => setTimeout(r, ms / steps))
+  private stopFade() {
+    if (this.fadeTimer) {
+      clearInterval(this.fadeTimer)
+      this.fadeTimer = null
     }
-    this.audio.volume = start
+  }
+
+  /** Плавно ведёт множитель громкости к цели (0…1) за `ms`. */
+  fadeTo(target: number, ms: number): Promise<void> {
+    this.stopFade()
+    const clamped = Math.max(0, Math.min(1, target))
+    if (ms <= 0) {
+      this.fadeFactor = clamped
+      this.applyVolume()
+      return Promise.resolve()
+    }
+    const from = this.fadeFactor
+    const started = performance.now()
+    return new Promise((resolve) => {
+      this.fadeTimer = setInterval(() => {
+        const t = Math.min(1, (performance.now() - started) / ms)
+        this.fadeFactor = from + (clamped - from) * t
+        this.applyVolume()
+        if (t >= 1) {
+          this.stopFade()
+          resolve()
+        }
+      }, 40)
+    })
+  }
+
+  /** Затухание перед сменой трека. */
+  async fadeOut(ms: number) {
+    await this.fadeTo(0, ms)
+  }
+
+  /** Появление после смены трека. */
+  async fadeIn(ms: number) {
+    await this.fadeTo(1, ms)
+  }
+
+  /** Сброс фейда в полную громкость. */
+  resetFade() {
+    this.stopFade()
+    this.fadeFactor = 1
+    this.applyVolume()
+  }
+
+  /**
+   * «Гэплесс»-предзагрузка: заранее тянем первые мегабайты следующего трека,
+   * чтобы старт был мгновенным и без паузы между треками.
+   */
+  prefetch(stream: StreamInfo) {
+    const isHls = stream.protocol === "hls" || stream.url.includes(".m3u8")
+    this.prefetchAbort?.abort()
+    const controller = new AbortController()
+    this.prefetchAbort = controller
+    const headers: Record<string, string> = isHls ? {} : { Range: "bytes=0-1572863" }
+    void fetch(stream.url, { signal: controller.signal, headers })
+      .then((r) => r.arrayBuffer())
+      .catch(() => {
+        /* предзагрузка необязательна */
+      })
+  }
+
+  cancelPrefetch() {
+    this.prefetchAbort?.abort()
+    this.prefetchAbort = null
   }
 
   private detachHls() {
@@ -271,6 +339,8 @@ export class AudioEngine {
 
   destroy() {
     this.loadSeq++
+    this.stopFade()
+    this.cancelPrefetch()
     this.detachHls()
     this.audio.pause()
     this.audio.removeAttribute("src")
