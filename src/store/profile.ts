@@ -61,12 +61,13 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
     const { scUser, profile } = get()
     if (!scUser) return
     const patch: Record<string, string> = {}
-    const name = scUser.display_name || scUser.username
+    const name = scUser.username?.trim()
     if (name && (force || !profile?.display_name || profile.display_name === "Слушатель")) {
       patch.display_name = name
     }
-    if (scUser.avatar_url && (force || !profile?.avatar)) {
-      patch.avatar = scUser.avatar_url.replace("-large", "-t500x500")
+    const avatar = scUser.avatar?.trim()
+    if (avatar && (force || !profile?.avatar)) {
+      patch.avatar = avatar.replace("-large", "-t500x500")
     }
     if (!Object.keys(patch).length) return
     await get().patch(patch)
