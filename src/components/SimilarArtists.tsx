@@ -8,7 +8,7 @@ import type { Track } from "@/lib/types"
 interface SimilarArtist {
   id: number
   name: string
-  avatar?: string
+  avatar: string | null
   weight: number
 }
 

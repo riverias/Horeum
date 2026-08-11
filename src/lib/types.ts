@@ -161,6 +161,8 @@ export interface Mood {
   gradient: string
   queries: string[]
   genres: string[]
+  /** Короткое описание настроения (может отсутствовать). */
+  description?: string
 }
 
 export interface SessionInfo {

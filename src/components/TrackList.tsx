@@ -1,3 +1,4 @@
+import type { ReactNode } from "react"
 import { Music2, Play, Radio, Shuffle } from "lucide-react"
 import { TrackRow } from "./TrackRow"
 import { TrackCard } from "./TrackCard"
@@ -13,12 +14,16 @@ type Props = {
   loading?: boolean
   title?: string
   subtitle?: string
+  /** Иконка рядом с заголовком. */
+  icon?: ReactNode
   source?: PlaySource
   actions?: boolean
   emptyText?: string
   onRemove?: (track: Track) => void
   /** Показать переключатель видов карточек. */
   switcher?: boolean
+  /** То же самое, более явное имя. */
+  layoutSwitcher?: boolean
   /** Жёстко заданный вид (игнорирует глобальный выбор). */
   layout?: TrackLayout
   /** Ручной порядок: переместить трек выше/ниже. */
@@ -30,11 +35,13 @@ export function TrackList({
   loading,
   title,
   subtitle,
+  icon,
   source = "library",
   actions = true,
   emptyText = "Ничего не найдено",
   onRemove,
   switcher = false,
+  layoutSwitcher = false,
   layout,
   onMove,
 }: Props) {
@@ -43,6 +50,7 @@ export function TrackList({
   const current = usePlayerStore((s) => s.current)
   const globalLayout = useUiStore((s) => s.trackLayout)
   const mode: TrackLayout = layout ?? globalLayout
+  const showSwitcher = switcher || layoutSwitcher
 
   const play = (i: number) => void playQueue(tracks, i, source)
 
@@ -136,10 +144,15 @@ export function TrackList({
 
   return (
     <section className="space-y-3">
-      {(title || actions || switcher) && (
+      {(title || actions || showSwitcher) && (
         <header className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            {title && <h2 className="section-title">{title}</h2>}
+            {title && (
+              <h2 className="section-title flex items-center gap-2">
+                {icon}
+                {title}
+              </h2>
+            )}
             {subtitle && <p className="mt-1 text-sm text-white/40">{subtitle}</p>}
           </div>
           <div className="flex shrink-0 flex-wrap items-center gap-2">
@@ -159,7 +172,7 @@ export function TrackList({
                 </button>
               </>
             )}
-            {switcher && <LayoutSwitcher />}
+            {showSwitcher && <LayoutSwitcher />}
           </div>
         </header>
       )}
