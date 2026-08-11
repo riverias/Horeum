@@ -100,7 +100,7 @@ export function ProfileView() {
   const patch = useProfileStore((s) => s.patch)
   const load = useProfileStore((s) => s.load)
   const syncFromSc = useProfileStore((s) => s.syncFromSc)
-  const isPlaying = usePlayerStore((s) => s.isPlaying)
+  const isPlaying = usePlayerStore((s) => s.playing)
   const toast = useUiStore((s) => s.toast)
 
   const [dialog, setDialog] = useState<DialogKind>(null)

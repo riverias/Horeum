@@ -5,7 +5,7 @@ import { ListMusic, Search as SearchIcon, User } from "lucide-react"
 import { api } from "@/lib/api"
 import { TrackList } from "@/components/TrackList"
 import { SkeletonList } from "@/components/SkeletonList"
-import { formatCount, formatDuration } from "@/lib/utils"
+import { formatCount } from "@/lib/utils"
 import { useUiStore } from "@/store/ui"
 import { usePlayerStore } from "@/store/player"
 
@@ -124,10 +124,8 @@ export function SearchView() {
                     )}
                   </div>
                   <p className="mt-2.5 truncate text-[13px] font-semibold">{p.title}</p>
-                  <p className="truncate text-[11px] text-white/35">{p.user}</p>
-                  <p className="mt-1 text-[10px] text-white/25">
-                    {p.track_count} треков • {formatDuration(p.duration)}
-                  </p>
+                  <p className="truncate text-[11px] text-white/35">{p.owner}</p>
+                  <p className="mt-1 text-[10px] text-white/25">{p.track_count} треков</p>
                 </button>
               ))}
               {playlists.length === 0 && <p className="text-sm text-white/35">Плейлистов нет</p>}
