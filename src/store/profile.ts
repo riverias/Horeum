@@ -14,6 +14,7 @@ interface ProfileState {
   setProfile: (p: Profile) => void
   patch: (patch: Record<string, string>) => Promise<void>
   setScUser: (u: ScUser | null) => void
+  syncFromSc: (force?: boolean) => Promise<void>
   refreshLikes: () => Promise<void>
   toggleLikeLocal: (trackId: number, liked: boolean) => void
   accentColor: () => string
@@ -52,6 +53,25 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
     set({ scUser })
   },
 
+  /**
+   * Подтягивает ник и аватарку из аккаунта SoundCloud.
+   * Без force не затирает то, что пользователь поменял вручную.
+   */
+  async syncFromSc(force = false) {
+    const { scUser, profile } = get()
+    if (!scUser) return
+    const patch: Record<string, string> = {}
+    const name = scUser.display_name || scUser.username
+    if (name && (force || !profile?.display_name || profile.display_name === "Слушатель")) {
+      patch.display_name = name
+    }
+    if (scUser.avatar_url && (force || !profile?.avatar)) {
+      patch.avatar = scUser.avatar_url.replace("-large", "-t500x500")
+    }
+    if (!Object.keys(patch).length) return
+    await get().patch(patch)
+  },
+
   async refreshLikes() {
     set({ likedIds: new Set(await api.likedIds()) })
   },
@@ -65,12 +85,21 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
 
   accentColor() {
     const { profile, cosmetics } = get()
+    const custom = document.documentElement.dataset.customAccent === "on"
+    if (custom) {
+      const value = getComputedStyle(document.documentElement)
+        .getPropertyValue("--accent")
+        .trim()
+      if (value) return value
+    }
     const found = cosmetics.find((c) => c.kind === "accent" && c.id === profile?.accent)
     return found?.value ?? "#8b5cf6"
   },
 }))
 
 function applyAccent(accentId: string, cosmetics: Unlockable[]) {
+  // если выбран свой цвет в настройках — не перебиваем его косметикой
+  if (document.documentElement.dataset.customAccent === "on") return
   const accent = cosmetics.find((c) => c.kind === "accent" && c.id === accentId)
   const hex = accent?.value ?? "#8b5cf6"
   const [r, g, b] = hexToRgb(hex)
