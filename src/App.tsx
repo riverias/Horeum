@@ -9,6 +9,7 @@ import { LyricsPanel } from "@/components/LyricsPanel"
 import { EqualizerPanel } from "@/components/EqualizerPanel"
 import { CommandPalette } from "@/components/CommandPalette"
 import { FullscreenPlayer } from "@/components/FullscreenPlayer"
+import { BackgroundLayer } from "@/components/BackgroundLayer"
 import { HomeView } from "@/views/HomeView"
 import { SearchView } from "@/views/SearchView"
 import { WaveView } from "@/views/WaveView"
@@ -19,11 +20,13 @@ import { HistoryView } from "@/views/HistoryView"
 import { PlaylistView } from "@/views/PlaylistView"
 import { ArtistView } from "@/views/ArtistView"
 import { ProfileView } from "@/views/ProfileView"
+import { DownloadsView } from "@/views/DownloadsView"
 import { SettingsView } from "@/views/SettingsView"
 import { useBootstrap } from "@/hooks/useBootstrap"
 import { useKeyboard } from "@/hooks/useKeyboard"
 import { useUiStore } from "@/store/ui"
 import { useProfileStore } from "@/store/profile"
+import { useAppearanceStore } from "@/store/appearance"
 
 function CurrentView() {
   const view = useUiStore((s) => s.view)
@@ -48,6 +51,8 @@ function CurrentView() {
       return <ArtistView id={Number(param)} />
     case "profile":
       return <ProfileView />
+    case "downloads":
+      return <DownloadsView />
     case "settings":
       return <SettingsView />
     default:
@@ -62,6 +67,7 @@ export default function App() {
   const view = useUiStore((s) => s.view)
   const fullscreen = useUiStore((s) => s.fullscreen)
   const background = useProfileStore((s) => s.profile?.background ?? "default")
+  const customBg = useAppearanceStore((s) => s.bgMode === "media" && !!s.bgMediaUrl)
 
   useEffect(() => {
     document.title = "Horeum"
@@ -69,7 +75,8 @@ export default function App() {
 
   return (
     <div className="relative flex h-screen w-screen flex-col overflow-hidden bg-ink-950">
-      <div className={`bg-scene bg-${background}`} />
+      {!customBg && <div className={`bg-scene bg-${background}`} />}
+      <BackgroundLayer />
       <div className="pointer-events-none absolute inset-0 z-[1] bg-gradient-to-b from-black/10 via-black/40 to-black/70" />
 
       <div className="relative z-10 flex h-full flex-col">
