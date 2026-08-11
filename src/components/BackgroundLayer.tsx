@@ -16,13 +16,22 @@ export function BackgroundLayer() {
 		grain,
 		vignette,
 		videoMuted,
+		bgFit,
+		bgOpacity,
+		contrast,
+		hue,
 	} = useAppearanceStore()
 
 	const active = bgMode === "media" && !!bgMediaUrl
 
+	const objectFit: React.CSSProperties["objectFit"] =
+		bgFit === "contain" ? "contain" : bgFit === "fill" ? "fill" : "cover"
+
 	const mediaStyle: React.CSSProperties = {
-		filter: `blur(${blur}px) saturate(${saturation}%)`,
+		filter: `blur(${blur}px) saturate(${saturation}%) contrast(${contrast}%) hue-rotate(${hue}deg)`,
 		transform: `scale(${scale / 100})`,
+		opacity: bgOpacity / 100,
+		objectFit,
 	}
 
 	return (
@@ -32,7 +41,7 @@ export function BackgroundLayer() {
 					<video
 						key={bgMediaUrl}
 						src={bgMediaUrl}
-						className="h-full w-full object-cover"
+						className="h-full w-full"
 						autoPlay
 						loop
 						muted={videoMuted}
@@ -45,7 +54,7 @@ export function BackgroundLayer() {
 						src={bgMediaUrl}
 						alt=""
 						decoding="async"
-						className="h-full w-full object-cover"
+						className="h-full w-full"
 						style={mediaStyle}
 					/>
 				))}

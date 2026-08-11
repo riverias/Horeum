@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { TooltipProvider } from "@radix-ui/react-tooltip"
 import App from "./App"
 import "./styles/index.css"
+import "./styles/plus.css"
 
 const queryClient = new QueryClient({
   defaultOptions: {

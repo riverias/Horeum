@@ -2,6 +2,8 @@ import { create } from "zustand"
 import { apix } from "@/lib/apiExt"
 import type { MediaKind } from "@/lib/typesExt"
 
+export type BgFit = "cover" | "contain" | "fill"
+
 export interface AppearanceSnapshot {
 	bgMode: "preset" | "media"
 	bgMediaUrl: string
@@ -19,6 +21,14 @@ export interface AppearanceSnapshot {
 	glass: number
 	radius: number
 	videoMuted: boolean
+	/* Horeum+ */
+	uiScale: number
+	bgFit: BgFit
+	bgOpacity: number
+	contrast: number
+	hue: number
+	accentGlow: boolean
+	compact: boolean
 }
 
 export const defaultAppearance: AppearanceSnapshot = {
@@ -38,6 +48,13 @@ export const defaultAppearance: AppearanceSnapshot = {
 	glass: 60,
 	radius: 16,
 	videoMuted: true,
+	uiScale: 100,
+	bgFit: "cover",
+	bgOpacity: 100,
+	contrast: 100,
+	hue: 0,
+	accentGlow: true,
+	compact: false,
 }
 
 interface AppearanceStore extends AppearanceSnapshot {
@@ -83,6 +100,8 @@ export function applyAppearance(snap: AppearanceSnapshot) {
 	}
 	root.dataset.iconAccent = snap.iconAccent ? "on" : "off"
 	root.dataset.animations = snap.animations ? "on" : "off"
+	root.dataset.accentGlow = snap.accentGlow ? "on" : "off"
+	root.dataset.compact = snap.compact ? "on" : "off"
 	root.dataset.customBg = snap.bgMode === "media" && snap.bgMediaUrl ? "on" : "off"
 	root.style.setProperty("--bg-blur", `${snap.blur}px`)
 	root.style.setProperty("--bg-dim", String(snap.dim / 100))
@@ -90,6 +109,9 @@ export function applyAppearance(snap: AppearanceSnapshot) {
 	root.style.setProperty("--bg-scale", String(snap.scale / 100))
 	root.style.setProperty("--glass-alpha", String(snap.glass / 100))
 	root.style.setProperty("--radius-ui", `${snap.radius}px`)
+	// масштаб интерфейса: Tailwind считает размеры в rem
+	const scale = Math.min(140, Math.max(80, snap.uiScale)) / 100
+	root.style.fontSize = `${(16 * scale).toFixed(2)}px`
 }
 
 export const useAppearanceStore = create<AppearanceStore>((set, get) => ({

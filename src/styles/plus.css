@@ -1,0 +1,44 @@
+/* Дополнительные стили Horeum+: круглый аватар, масштаб интерфейса,
+   свечение акцента и компактный режим. Подключается из main.tsx. */
+
+/* ── Аватар всегда круглый, в любой рамке ─────────────────────────── */
+.frame {
+	border-radius: 9999px !important;
+	overflow: hidden;
+}
+
+.frame img,
+.frame > img {
+	display: block;
+	width: 100%;
+	height: 100%;
+	border-radius: 9999px !important;
+	object-fit: cover;
+}
+
+.frame > div {
+	border-radius: 9999px !important;
+}
+
+/* ── Свечение акцента можно выключить ─────────────────────────────── */
+html[data-accent-glow="off"] .shadow-glow {
+	box-shadow: none !important;
+}
+
+/* ── Компактный режим: меньше воздуха в списках ───────────────────── */
+html[data-compact="on"] .card {
+	padding: 0.85rem;
+}
+
+html[data-compact="on"] .scroll-area {
+	line-height: 1.25;
+}
+
+/* ── Плавная смена масштаба интерфейса ────────────────────────────── */
+html {
+	transition: font-size 160ms ease;
+}
+
+html[data-animations="off"] {
+	transition: none;
+}
